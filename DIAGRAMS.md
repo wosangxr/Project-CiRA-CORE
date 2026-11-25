@@ -1,7 +1,7 @@
 # 📊 Smart AI Exam Integrity CCTV Dashboard — Technical Diagrams
 ### CPE-447 Project: CiRA CORE & AI Edge Computing Architecture
 
-Comprehensive technical diagrams for project presentation slides (PowerPoint / Canva) and engineering documentation.
+Clean technical diagrams focused strictly on active features: **Smartphone Detection**, **Suspicious Head Movement (>2.5s)**, and **10-Second MP4 Video Evidence Clips**.
 
 ---
 
@@ -27,18 +27,17 @@ flowchart TD
         YOLO -->|Bounding Box & Class Conf| Behavior
         
         Behavior --> D1["Smartphone Detection<br/>(class: cell phone)"]
-        Behavior --> D2["Unauthorized Materials<br/>(class: book / notes)"]
-        Behavior --> D3["Suspicious Head Yaw Deviation<br/>(Head Turned &gt; 2.5s)"]
+        Behavior --> D2["Suspicious Head Yaw Deviation<br/>(Head Turned &gt; 2.5s)"]
     end
 
     subgraph Layer3["3. Backend, Storage & Daemon Layer"]
         Flask["Flask REST API Server<br/>(Python 3 / Threaded)"]
         DB[("SQLite3 Database<br/>(detections.db)")]
-        Storage["Evidence Storage<br/>(MP4 Video Clips &amp; JPG Snapshots)"]
+        Storage["Evidence Storage<br/>(snapshots/*.mp4 Video Clips)"]
         Systemd["Linux systemd Service<br/>(Auto-boot on Power On)"]
         
-        Behavior -->|Log Incident Timestamp &amp; Confidence| DB
-        Behavior -->|Buffer &amp; Encode 10s MP4 Clip| Storage
+        Behavior -->|Log Incident Timestamp & Confidence| DB
+        Behavior -->|Buffer & Encode 10s MP4 Video Clip| Storage
         Behavior -->|Real-time Alert Event Dispatch| Flask
         Systemd -->|Daemon Lifecycle Management| Flask
     end
@@ -77,14 +76,14 @@ sequenceDiagram
     participant UI as Proctor Web Dashboard
     actor Proctor as Exam Proctor (Teacher)
 
-    Examinee->>CCTV: Suspicious Action (e.g. Using Phone / Looking Away)
+    Examinee->>CCTV: Suspicious Action (Using Phone / Looking Away)
     CCTV->>OpenCV: RTSP Stream (H.264 Video Frames)
     OpenCV->>YOLO: Frame Preprocessing (Resize 640x640, BGR to RGB)
     YOLO->>Behavior: Detect Objects & Bounding Boxes (Conf >= 0.18)
     Behavior->>Behavior: Verify Sustained Duration (Duration >= 2.5s)
     Note over Behavior: Violation Confirmed: Cheating Alert Triggered
 
-    par Asynchronous Evidence Archiving
+    par Asynchronous Video Evidence Archiving
         Behavior->>Backend: Write Incident Metadata to SQLite Database
         Behavior->>Backend: Encode & Save 10-Second MP4 Video Clip
     and Real-Time Alert Broadcast
@@ -94,7 +93,7 @@ sequenceDiagram
 
     UI->>Proctor: Display Live Alarm & Incident Badge on Dashboard
     Proctor->>UI: Click Incident in History Table
-    UI->>Proctor: Open Evidence Player Modal (Playback Video & Timestamp)
+    UI->>Proctor: Open Evidence Player Modal (Playback 10s MP4 Video Clip)
 ```
 
 ---
@@ -136,7 +135,7 @@ flowchart LR
     CAM -->|RTSP Stream| Router
     RPI <-->|Gigabit Ethernet / Wi-Fi| Router
     Router <-->|http://raspberrypi.local:5000| Mobile
-    Router <-->|http://raspberrypi.local:5000| PC
+    Router <-->|http://raspberrypi.local:5000| Laptop
     Router <-->|http://raspberrypi.local:5000| Tablet
 ```
 
@@ -154,7 +153,7 @@ flowchart TD
 
     subgraph BACKEND["🧠 Core Processing & AI Engine"]
         cfg["camera_config.json<br/>(CCTV RTSP Configuration)"]
-        yolo_pt["yolov8n.pt<br/>(YOLOv8 Deep Learning Weights)"]
+        yolo_pt["yolov8n.pt<br/>(YOLOv8 Phone & Head Movement Detection)"]
         server_py["server.py<br/>(Flask Server, AI Loop & CCTV Stream Handler)"]
         
         cfg -->|Reads RTSP Stream URLs| server_py
@@ -165,10 +164,10 @@ flowchart TD
 
     subgraph STORAGE["💾 Data & Evidence Storage Layer"]
         db[("detections.db<br/>(SQLite Incident Logs)")]
-        snapshots["snapshots/<br/>(Recorded MP4 Clips & JPG Snapshots)"]
+        snapshots["snapshots/<br/>(Recorded 10s MP4 Video Clips)"]
         
         server_py -->|Write Incident Records| db
-        server_py -->|Save 10s Video Buffer & Snapshot| snapshots
+        server_py -->|Save 10s Video Buffer Clip| snapshots
     end
 
     subgraph FRONTEND["🖥️ Web Dashboard & UI Layer"]
@@ -182,7 +181,7 @@ flowchart TD
         index_html -->|Apply Styling| style_css
         index_html -->|Execute Client Logic| app_js
         app_js -->|Poll API & Fetch Live Stream Feeds| server_py
-        app_js -->|Read Evidence Videos for Playback| snapshots
+        app_js -->|Read 10s Video Clips for Playback| snapshots
     end
 
     sync_py -.->|Deploy Backend Code via SSH| BACKEND
