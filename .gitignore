@@ -1,0 +1,23 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Environment & binaries
+.env
+venv/
+env/
+cloudflared.exe
+cloudflared
+
+# Backups & temp files
+*.bak
+*.bak2
+public_url.txt
+
+# Database & runtime files
+detections.db
+snapshots/*.jpg
+snapshots/*.png
+!snapshots/.gitkeep

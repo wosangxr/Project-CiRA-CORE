@@ -1,0 +1,4226 @@
+<!DOCTYPE html>
+
+
+
+<html lang="en">
+
+
+
+<head>
+
+
+
+  <meta charset="UTF-8" />
+
+
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+
+
+  <title>Smart AI Exam Integrity – Dashboard v2.0.0</title>
+
+
+
+  <link rel="stylesheet" href="style.css" />
+
+
+
+  <!-- Google Fonts -->
+
+
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+
+
+
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+
+
+
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+
+
+
+
+  <!-- Auth Guard: ตรวจสอบการเข้าสู่ระบบแบบทันทีก่อนเรนเดอร์หน้า -->
+  <script>
+    (function() {
+      const token = sessionStorage.getItem('admin_token') || localStorage.getItem('admin_token') || sessionStorage.getItem('cctv_admin_token') || localStorage.getItem('cctv_admin_logged_in');
+      if (!token) {
+        const loginUrl = window.location.pathname.endsWith('index.html')
+          ? window.location.pathname.replace('index.html', 'admin_login.html')
+          : 'admin_login.html';
+        window.location.replace(loginUrl);
+      }
+    })();
+
+    function logoutAdmin() {
+      const modal = document.getElementById('logoutConfirmModal');
+      if (modal) {
+        modal.style.display = 'flex';
+      } else {
+        executeLogout();
+      }
+    }
+
+    function closeLogoutModal() {
+      const modal = document.getElementById('logoutConfirmModal');
+      if (modal) {
+        modal.style.display = 'none';
+      }
+    }
+
+    function executeLogout() {
+      sessionStorage.removeItem('admin_token');
+      sessionStorage.removeItem('admin_user');
+      sessionStorage.removeItem('cctv_admin_token');
+      localStorage.removeItem('admin_token');
+      localStorage.removeItem('admin_user');
+      localStorage.removeItem('cctv_admin_logged_in');
+      const loginUrl = window.location.pathname.endsWith('index.html')
+        ? window.location.pathname.replace('index.html', 'admin_login.html')
+        : 'admin_login.html';
+      window.location.replace(loginUrl);
+    }
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeLogoutModal();
+    });
+
+    window.addEventListener('DOMContentLoaded', () => {
+      try {
+        const rawUser = sessionStorage.getItem('admin_user') || localStorage.getItem('admin_user');
+        if (rawUser) {
+          const u = JSON.parse(rawUser);
+          const nameEl = document.getElementById('topbarUserName');
+          const avatarEl = document.getElementById('topbarUserAvatar');
+          if (nameEl && u.name) nameEl.textContent = u.name;
+          if (avatarEl && u.name) {
+            const initials = u.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+            if (initials) avatarEl.textContent = initials;
+          }
+        }
+      } catch(e) {}
+    });
+  </script>
+
+</head>
+
+
+
+<body>
+
+
+
+
+
+
+
+<!-- Backend Offline Banner -->
+
+
+
+<div class="offline-banner" id="offlineBanner">
+
+
+
+  ⚠ Backend Offline — Attempting to reconnect to http://localhost:5000 …
+
+
+
+</div>
+
+
+
+
+
+
+
+<!-- Sidebar Overlay (mobile) -->
+
+
+
+<div class="sidebar-overlay" id="sidebarOverlay" onclick="Nav.closeMobile()"></div>
+
+
+
+
+
+
+
+<div class="app-shell">
+
+
+
+
+
+
+
+  <!-- ══════════════ SIDEBAR ══════════════ -->
+
+
+
+  <aside class="sidebar collapsed" id="sidebar">
+
+
+
+    <!-- Logo -->
+
+
+
+            <div class="sidebar-logo">
+      <div class="logo-inner">
+        <div class="logo-icon">
+          <!-- Shield Icon -->
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          </svg>
+        </div>
+        <div class="logo-text">
+          <h1>Smart AI</h1>
+          <span>Exam Integrity</span>
+        </div>
+      </div>
+    </div>
+
+
+
+
+
+
+
+
+
+
+    <!-- Navigation -->
+
+
+
+    <nav class="sidebar-nav">
+
+
+
+      <div class="nav-label" data-i18n="nav.mainmenu">Main Menu</div>
+
+
+
+
+
+
+
+      <div class="nav-item active" data-page="dashboard" data-tooltip="Dashboard (แดชบอร์ด)" onclick="Nav.navigate('dashboard')">
+
+
+
+        <span class="nav-icon">
+
+
+
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+
+
+
+            <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
+
+
+
+            <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
+
+
+
+          </svg>
+
+
+
+        </span>
+
+
+
+        <span data-i18n="nav.dashboard">Dashboard</span>
+
+
+
+      </div>
+
+
+
+
+
+
+
+      <div class="nav-item" data-page="monitor" data-tooltip="Live Monitoring (ดูภาพสด)" onclick="Nav.navigate('monitor')">
+
+
+
+        <span class="nav-icon">
+
+
+
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+
+
+
+            <circle cx="12" cy="12" r="10"/>
+
+
+
+            <polygon points="10 8 16 12 10 16 10 8"/>
+
+
+
+          </svg>
+
+
+
+        </span>
+
+
+
+        <span data-i18n="nav.monitor">Live Monitoring</span>
+
+
+
+      </div>
+
+
+
+
+
+
+
+      <div class="nav-item" data-page="cameras" data-tooltip="Camera Management (จัดการกล้อง)" onclick="Nav.navigate('cameras')">
+
+
+
+        <span class="nav-icon">
+
+
+
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+
+
+
+            <path d="M23 7l-7 5 7 5V7z"/>
+
+
+
+            <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+
+
+
+          </svg>
+
+
+
+        </span>
+
+
+
+        <span data-i18n="nav.cameras">Camera Management</span>
+
+
+
+      </div>
+
+
+
+
+
+
+
+      <div class="nav-item" data-page="history" data-tooltip="Detection History (ประวัติการตรวจจับ)" onclick="Nav.navigate('history')">
+
+
+
+        <span class="nav-icon">
+
+
+
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+
+
+
+            <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+
+
+
+          </svg>
+
+
+
+        </span>
+
+
+
+        <span data-i18n="nav.history">Detection History</span>
+
+
+
+      </div>
+
+
+
+      <div class="nav-item" data-page="settings" data-tooltip="System Settings (ตั้งค่าระบบ)" onclick="Nav.navigate('settings')">
+
+
+
+        <span class="nav-icon">
+
+
+
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+
+
+
+            <circle cx="12" cy="12" r="3"/>
+
+
+
+            <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/>
+
+
+
+          </svg>
+
+
+
+        </span>
+
+
+
+        <span data-i18n="nav.settings">System Settings</span>
+
+
+
+      </div>
+
+
+
+    </nav>
+    <!-- Bottom Sidebar Collapse Action -->
+    <div class="sidebar-bottom-action">
+      <button class="sidebar-collapse-btn-bottom" id="sidebarCollapseBtn" onclick="Nav.toggleSidebar()" title="ย่อแถบเมนู (Collapse Sidebar)">
+        <span class="collapse-icon">
+          <svg id="collapseBtnIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="9 18 15 12 9 6"/>
+          </svg>
+        </span>
+        <span class="collapse-label" id="collapseBtnLabel">ตรึงแถบเมนู (Pin)</span>
+      </button>
+    </div>
+
+    <!-- Footer -->
+    <div class="sidebar-footer">
+
+
+
+      <span class="sidebar-version">v2.0.0</span>
+
+
+
+      <span class="sidebar-time" id="sidebarClock">00:00:00</span>
+
+
+
+    </div>
+
+
+
+  </aside>
+
+
+
+
+
+
+
+  <!-- ══════════════ MAIN CONTENT ══════════════ -->
+
+
+
+  <div class="main-content sidebar-collapsed">
+
+
+
+
+
+
+
+    <!-- Top Bar -->
+
+
+
+    <header class="topbar">
+      <button class="hamburger"  id="hamburger" onclick="Nav.toggleMobile()">
+
+
+
+        <span></span><span></span><span></span>
+
+
+
+      </button>
+
+
+
+      <div class="topbar-left">
+
+
+
+        <div class="topbar-title" id="topbarTitle">Dashboard</div>
+
+
+
+        <div class="topbar-subtitle" id="topbarSubtitle" data-i18n="topbar.subtitle">Smart AI Exam Integrity System</div>
+
+
+
+      </div>
+
+
+
+      <div class="topbar-right">
+
+
+
+        <span class="topbar-clock" id="topbarClock">--:--:--</span>
+
+
+
+        <!-- Language Toggle -->
+
+
+
+        <div class="lang-toggle">
+
+
+
+          <button class="lang-btn active" data-lang="en" onclick="I18n.setLang('en')">EN</button>
+
+
+
+          <button class="lang-btn" data-lang="th" onclick="I18n.setLang('th')">TH</button>
+
+
+
+        </div>
+
+
+
+        <!-- Notification Button & Dropdown -->
+
+
+
+        <div class="notif-wrapper" style="position:relative;">
+
+
+
+          <div class="icon-btn" id="notifBtn" title="Notifications" onclick="NotifDropdown.toggle(event)">
+
+
+
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+
+
+
+              <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/>
+
+
+
+            </svg>
+
+
+
+            <span class="notif-dot" id="notifDot" style="display:none"></span>
+
+
+
+          </div>
+
+
+
+
+
+
+
+          <!-- Notification Dropdown Popover -->
+
+
+
+          <div class="notif-dropdown" id="notifDropdown" style="display:none;">
+
+
+
+            <div class="notif-header">
+
+
+
+              <div class="notif-header-title">
+
+
+
+                <span style="font-size:1.05rem;">🔔</span>
+
+
+
+                <span style="font-weight:700;font-size:0.92rem;">เหตุการณ์ห้องสอบ</span>
+
+
+
+              </div>
+
+
+
+              <span class="notif-session-badge" id="notifSessionBadge">PHYS-101-MID</span>
+
+
+
+            </div>
+
+
+
+            <div class="notif-list" id="notifList">
+
+
+
+              <!-- Rendered via JS -->
+
+
+
+            </div>
+
+
+
+            <div class="notif-footer" onclick="NotifDropdown.goToHistory()">
+
+
+
+              <span>ดูประวัติการตรวจจับทั้งหมด</span>
+
+
+
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+
+
+
+            </div>
+
+
+
+          </div>
+
+
+
+        </div>
+
+
+
+      
+        <!-- Admin Profile & Logout Widget -->
+        <div class="user-profile-widget" style="display:flex; align-items:center; gap:8px; margin-left:8px; padding-left:12px; border-left:1px solid rgba(255,255,255,0.12);">
+          <div class="user-avatar" id="topbarUserAvatar" style="width:32px; height:32px; border-radius:8px; background:linear-gradient(135deg, #2563EB, #1D4ED8); display:flex; align-items:center; justify-content:center; color:#fff; font-size:12px; font-weight:700; user-select:none;">
+            AD
+          </div>
+          <div class="user-meta" style="display:flex; flex-direction:column; line-height:1.2;">
+            <span id="topbarUserName" style="font-size:12px; font-weight:600; color:#F8FAFC;">Super Admin</span>
+            <span style="font-size:10px; color:#94A3B8;">Administrator</span>
+          </div>
+          <button class="logout-btn" onclick="logoutAdmin()" title="ออกจากระบบ (Logout)" style="display:flex; align-items:center; justify-content:center; width:32px; height:32px; border-radius:8px; border:1px solid rgba(239,68,68,0.25); background:rgba(239,68,68,0.1); color:#EF4444; cursor:pointer; margin-left:4px; transition:all 0.2s;" onmouseover="this.style.background='rgba(239,68,68,0.2)'" onmouseout="this.style.background='rgba(239,68,68,0.1)'">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+              <polyline points="16 17 21 12 16 7"></polyline>
+              <line x1="21" y1="12" x2="9" y2="12"></line>
+            </svg>
+          </button>
+        </div>
+
+      </div>
+
+
+
+    </header>
+
+
+
+
+
+
+
+    <!-- Page Container -->
+
+
+
+    <div class="page-container">
+
+
+
+
+
+
+
+      <!-- ════════ PAGE: DASHBOARD ════════ -->
+
+
+
+      <div class="page active" id="page-dashboard">
+
+
+
+
+
+
+
+        <!-- Stats Row -->
+
+
+
+        <div class="stats-grid mb-24">
+
+
+
+          <div class="stat-card">
+
+
+
+            <div class="stat-icon blue">
+
+
+
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+
+
+
+                <path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+
+
+
+              </svg>
+
+
+
+            </div>
+
+
+
+            <div class="stat-info">
+
+
+
+              <div class="stat-num font-heading" id="statTotalCams">—</div>
+
+
+
+              <div class="stat-label"><span data-i18n="stat.totalCams">Total Cameras</span></div>
+
+
+
+              <div class="stat-trend"><span data-i18n="stat.totalCamsTrend">Configured cameras</span></div>
+
+
+
+            </div>
+
+
+
+          </div>
+
+
+
+          <div class="stat-card">
+
+
+
+            <div class="stat-icon green">
+
+
+
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+
+
+
+                <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+
+
+
+              </svg>
+
+
+
+            </div>
+
+
+
+            <div class="stat-info">
+
+
+
+              <div class="stat-num font-heading" id="statActiveCams">—</div>
+
+
+
+              <div class="stat-label"><span data-i18n="stat.activeCams">Active Cameras</span></div>
+
+
+
+              <div class="stat-trend" id="statActiveTrend"><span data-i18n="stat.activeTrend">Currently streaming</span></div>
+
+
+
+            </div>
+
+
+
+          </div>
+
+
+
+          <div class="stat-card">
+
+
+
+            <div class="stat-icon orange">
+
+
+
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+
+
+
+                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+
+
+
+              </svg>
+
+
+
+            </div>
+
+
+
+            <div class="stat-info">
+
+
+
+              <div class="stat-num font-heading" id="statDetectionsToday">—</div>
+
+
+
+              <div class="stat-label"><span data-i18n="stat.detectionsToday">Detections Today</span></div>
+
+
+
+              <div class="stat-trend" id="statDetectionsTrend"><span data-i18n="stat.detectionsTrend">From history</span></div>
+
+
+
+            </div>
+
+
+
+          </div>
+
+
+
+          <div class="stat-card">
+
+
+
+            <div class="stat-icon red">
+
+
+
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+
+
+
+                <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+
+
+
+                <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+
+
+
+              </svg>
+
+
+
+            </div>
+
+
+
+            <div class="stat-info">
+
+
+
+              <div class="stat-num font-heading" id="statSuspicious">—</div>
+
+
+
+              <div class="stat-label"><span data-i18n="stat.suspicious">Suspicious Events</span></div>
+
+
+
+              <div class="stat-trend" id="statSuspiciousTrend"><span data-i18n="stat.suspiciousTrend">Phone detections</span></div>
+
+
+
+            </div>
+
+
+
+          </div>
+
+
+
+        </div>
+
+
+
+
+
+
+
+        <!-- Middle Row -->
+
+
+
+        <div class="grid-60-40 section-gap">
+
+
+
+          <!-- Detection Activity Chart -->
+
+
+
+          <!-- Detection Status Proportion (Donut Chart) -->
+
+
+
+          <div class="card">
+
+
+
+            <div class="card-header">
+
+
+
+              <div class="card-title">
+
+
+
+                <div class="card-icon" style="background:rgba(62,106,225,0.08);color:var(--primary);">
+
+
+
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+
+
+
+                    <path d="M21.21 15.89A10 10 0 1 1 8 2.83"/>
+
+
+
+                    <path d="M22 12A10 10 0 0 0 12 2v10z"/>
+
+
+
+                  </svg>
+
+
+
+                </div>
+
+
+
+                <span data-i18n="dash.activity">สัดส่วนสถานะการตรวจจับ</span>
+
+
+
+              </div>
+
+
+
+              <div style="display:flex;align-items:center;gap:8px;">
+                <span class="badge badge-info" id="chartTotalBadge">สถิติรวม</span>
+                <span class="badge" id="examIntegrityBadge" style="background:#ECFDF5;color:#047857;border:1px solid #A7F3D0;font-weight:700;padding:4px 10px;border-radius:12px;font-size:0.75rem;">🛡 ดัชนีความเรียบร้อย: 85/100</span>
+              </div>
+
+
+
+            </div>
+
+
+
+            <div class="card-body" style="padding:16px 20px;">
+
+
+
+              <div class="donut-card-inner" id="donutContainer">
+
+
+
+                <!-- SVG Donut Chart + Legend dynamically rendered by JS -->
+
+
+
+              </div>
+
+
+
+            </div>
+
+
+
+          </div>
+
+
+
+
+
+
+
+          <!-- Camera Status -->
+
+
+
+          <div class="card">
+
+
+
+            <div class="card-header">
+
+
+
+              <div class="card-title">
+
+
+
+                <div class="card-icon">
+
+
+
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+
+
+
+                    <path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+
+
+
+                  </svg>
+
+
+
+                </div>
+
+
+
+                <span data-i18n="dash.camStatus">Live Camera Status</span>
+
+
+
+              </div>
+
+
+
+            </div>
+
+
+
+            <div class="card-body">
+
+
+
+              <div class="cam-status-list" id="dashCamStatusList">
+
+
+
+                <!-- Populated by JS -->
+
+
+
+              </div>
+
+
+
+            </div>
+
+
+
+          </div>
+
+
+
+        </div>
+
+
+
+
+
+
+
+        <!-- Recent Detections Table -->
+
+
+
+        <div class="card">
+
+
+
+          <div class="card-header">
+
+
+
+            <div class="card-title">
+
+
+
+              <div class="card-icon">
+
+
+
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+
+
+
+                  <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/>
+
+
+
+                  <line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/>
+
+
+
+                  <line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
+
+
+
+                </svg>
+
+
+
+              </div>
+
+
+
+              <span data-i18n="dash.recent">Recent Detections</span>
+
+
+
+            </div>
+
+
+
+            <span class="text-muted text-xs"><span data-i18n="dash.last10">Last 10 events</span></span>
+
+
+
+          </div>
+
+
+
+          <div class="card-body" style="padding-top:14px;">
+
+
+
+            <div class="table-wrap">
+
+
+
+              <table>
+                <thead>
+                  <tr>
+                    <th style="min-width:110px"><span data-i18n="th.time">เวลาตรวจพบ</span></th>
+                    <th style="min-width:140px"><span data-i18n="th.camera">กล้องตรวจจับ</span></th>
+                    <th style="min-width:240px"><span data-i18n="th.student">ผู้เข้าสอบ & เหตุการณ์ที่พบ</span></th>
+                    <th style="min-width:170px"><span data-i18n="th.confidence">คะแนนความเสี่ยง & ความแม่นยำ</span></th>
+                    <th style="min-width:130px"><span data-i18n="th.status">สถานะ</span></th>
+                    <th style="min-width:135px;text-align:right;"><span data-i18n="th.action">การดำเนินการ</span></th>
+                  </tr>
+                </thead>
+
+
+
+                <tbody id="recentDetectionsBody">
+
+
+
+                  <tr>
+
+
+
+                    <td colspan="5">
+
+
+
+                      <div class="empty-state" style="padding:24px">
+
+
+
+                        <div class="empty-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div>
+
+
+
+                        <p>No detections yet. Waiting for data…</p>
+
+
+
+                      </div>
+
+
+
+                    </td>
+
+
+
+                  </tr>
+
+
+
+                </tbody>
+
+
+
+              </table>
+
+
+
+            </div>
+
+
+
+          </div>
+
+
+
+        </div>
+
+
+
+      </div>
+
+
+
+
+
+
+
+      <!-- ════════ PAGE: CAMERA MANAGEMENT ════════ -->
+
+
+
+      <div class="page" id="page-cameras">
+
+
+
+        <div class="d-flex align-center justify-between mb-20 flex-wrap gap-12" style="margin-bottom:20px;">
+
+
+
+          <p class="text-muted" style="font-size:0.875rem;margin:0" data-i18n="cam.subtitle">Configure and connect IP cameras via RTSP. Settings are saved automatically.</p>
+
+
+
+          <button class="btn btn-primary" id="btnAddCamera" onclick="CameraPage.addCamera()" style="background:#3E6AE1;border-color:#3E6AE1;color:#FFFFFF;display:inline-flex;align-items:center;gap:8px;font-weight:600;padding:9px 18px;border-radius:10px;box-shadow:0 4px 14px rgba(62, 106, 225, 0.32);cursor:pointer;font-size:0.875rem;">
+
+
+
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+
+
+
+              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+
+
+
+            </svg>
+
+
+
+            <span data-i18n="cam.addCamera">เพิ่มกล้อง</span>
+
+
+
+          </button>
+
+
+
+        </div>
+
+
+
+
+
+
+
+        <div class="grid-cam" id="camerasGrid">
+
+
+
+          <!-- Camera 1 Card -->
+
+
+
+          <div class="card" id="camCard-cam1">
+
+
+
+            <div class="card-header">
+
+
+
+              <div class="card-title">
+
+
+
+                <div class="card-icon">
+
+
+
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+
+
+
+                    <path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+
+
+
+                  </svg>
+
+
+
+                </div>
+
+
+
+                Camera 1
+
+
+
+              </div>
+
+
+
+              <span class="badge badge-muted" id="cam1-status-badge">Disconnected</span>
+
+
+
+            </div>
+
+
+
+            <div class="card-body">
+
+
+
+              <div class="form-group">
+
+
+
+                <label class="form-label">Camera Name</label>
+
+
+
+                <input type="text" class="form-control" id="cam1-name" value="Camera 01 – Front Room" placeholder="e.g. Front Room Camera" />
+
+
+
+              </div>
+
+
+
+              <div class="form-row">
+
+
+
+                <div class="form-group mb-0">
+
+
+
+                  <label class="form-label">IP Address</label>
+
+
+
+                  <input type="text" class="form-control" id="cam1-ip" value="10.114.70.75" placeholder="192.168.1.100" oninput="CameraPage.updateRtspPreview('cam1')" />
+
+
+
+                </div>
+
+
+
+                <div class="form-group mb-0">
+
+
+
+                  <label class="form-label">RTSP Port</label>
+
+
+
+                  <input type="text" class="form-control" id="cam1-port" value="554" placeholder="554" oninput="CameraPage.updateRtspPreview('cam1')" />
+
+
+
+                </div>
+
+
+
+              </div>
+
+
+
+              <div class="form-row mt-16">
+
+
+
+                <div class="form-group mb-0">
+
+
+
+                  <label class="form-label">Username</label>
+
+
+
+                  <input type="text" class="form-control" id="cam1-user" value="Tuna1234" placeholder="admin" oninput="CameraPage.updateRtspPreview('cam1')" />
+
+
+
+                </div>
+
+
+
+                <div class="form-group mb-0">
+
+
+
+                  <label class="form-label">Password</label>
+
+
+
+                  <div class="input-group">
+
+
+
+                    <input type="password" class="form-control" id="cam1-pass" value="Tuna1234" placeholder="••••••••" oninput="CameraPage.updateRtspPreview('cam1')" />
+
+
+
+                    <span class="input-group-append" onclick="CameraPage.togglePassword('cam1-pass', this)" title="Show/Hide password">
+
+
+
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+
+
+
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+
+
+
+                      </svg>
+
+
+
+                    </span>
+
+
+
+                  </div>
+
+
+
+                </div>
+
+
+
+              </div>
+
+
+
+              <div class="form-group mt-16">
+
+
+
+                <label class="form-label">Stream Path</label>
+
+
+
+                <input type="text" class="form-control" id="cam1-path" value="/stream1" placeholder="/stream1" oninput="CameraPage.updateRtspPreview('cam1')" />
+
+
+
+              </div>
+
+
+
+              <!-- RTSP Preview -->
+
+
+
+              <div class="rtsp-preview" id="cam1-rtsp-preview">
+
+
+
+                <div class="rtsp-label">RTSP URL Preview</div>
+
+
+
+                <span id="cam1-rtsp-url">rtsp://Tuna1234:***@10.114.70.75:554/stream1</span>
+
+
+
+              </div>
+
+
+
+              <!-- Action Buttons -->
+
+
+
+              <div class="d-flex gap-8 mt-16">
+
+
+
+                <button class="btn btn-primary" onclick="CameraPage.connect('cam1')">
+
+
+
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+
+
+
+                    <path d="M5 12h14"/><path d="M12 5l7 7-7 7"/>
+
+
+
+                  </svg>
+
+
+
+                  Connect
+
+
+
+                </button>
+
+
+
+                <button class="btn btn-danger" onclick="CameraPage.disconnect('cam1')">
+
+
+
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+
+
+
+                    <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+
+
+
+                  </svg>
+
+
+
+                  Disconnect
+
+
+
+                </button>
+
+
+
+                <button class="btn btn-secondary" onclick="CameraPage.test('cam1')">
+
+
+
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+
+
+
+                    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+
+
+
+                  </svg>
+
+
+
+                  Test
+
+
+
+                </button>
+
+
+
+              </div>
+
+
+
+              <!-- Camera Preview -->
+
+
+
+              <div class="cam-feed-wrap mt-16">
+
+
+
+                <img src="/video_feed?cam=cam1" alt="Camera 1 Feed" id="cam1-preview"
+
+
+
+                     style="width:100%;height:100%;object-fit:cover"
+
+
+
+                     onerror="this.style.display='none';document.getElementById('cam1-no-signal').style.display='flex'"
+
+
+
+                     onload="document.getElementById('cam1-no-signal').style.display='none';this.style.display='block'" />
+
+
+
+                <div class="cam-no-signal" id="cam1-no-signal" style="display:none">
+
+
+
+                  <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+
+
+
+                    <path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+
+
+
+                    <line x1="1" y1="1" x2="23" y2="23"/>
+
+
+
+                  </svg>
+
+
+
+                  <p>No Signal</p>
+
+
+
+                </div>
+
+
+
+              </div>
+
+
+
+              <!-- Test Result -->
+
+
+
+              <div id="cam1-test-result" style="display:none;margin-top:10px;" class="text-sm"></div>
+
+
+
+            </div>
+
+
+
+          </div>
+
+
+
+
+
+
+
+          <!-- Camera 2 Card -->
+
+
+
+          <div class="card" id="camCard-cam2">
+
+
+
+            <div class="card-header">
+
+
+
+              <div class="card-title">
+
+
+
+                <div class="card-icon">
+
+
+
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+
+
+
+                    <path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+
+
+
+                  </svg>
+
+
+
+                </div>
+
+
+
+                Camera 2
+
+
+
+              </div>
+
+
+
+              <span class="badge badge-muted" id="cam2-status-badge">Disconnected</span>
+
+
+
+            </div>
+
+
+
+            <div class="card-body">
+
+
+
+              <div class="form-group">
+
+
+
+                <label class="form-label">Camera Name</label>
+
+
+
+                <input type="text" class="form-control" id="cam2-name" value="" placeholder="e.g. Back Room Camera" />
+
+
+
+              </div>
+
+
+
+              <div class="form-row">
+
+
+
+                <div class="form-group mb-0">
+
+
+
+                  <label class="form-label">IP Address</label>
+
+
+
+                  <input type="text" class="form-control" id="cam2-ip" value="" placeholder="192.168.1.101" oninput="CameraPage.updateRtspPreview('cam2')" />
+
+
+
+                </div>
+
+
+
+                <div class="form-group mb-0">
+
+
+
+                  <label class="form-label">RTSP Port</label>
+
+
+
+                  <input type="text" class="form-control" id="cam2-port" value="554" placeholder="554" oninput="CameraPage.updateRtspPreview('cam2')" />
+
+
+
+                </div>
+
+
+
+              </div>
+
+
+
+              <div class="form-row mt-16">
+
+
+
+                <div class="form-group mb-0">
+
+
+
+                  <label class="form-label">Username</label>
+
+
+
+                  <input type="text" class="form-control" id="cam2-user" value="" placeholder="admin" oninput="CameraPage.updateRtspPreview('cam2')" />
+
+
+
+                </div>
+
+
+
+                <div class="form-group mb-0">
+
+
+
+                  <label class="form-label">Password</label>
+
+
+
+                  <div class="input-group">
+
+
+
+                    <input type="password" class="form-control" id="cam2-pass" value="" placeholder="••••••••" oninput="CameraPage.updateRtspPreview('cam2')" />
+
+
+
+                    <span class="input-group-append" onclick="CameraPage.togglePassword('cam2-pass', this)" title="Show/Hide password">
+
+
+
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+
+
+
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+
+
+
+                      </svg>
+
+
+
+                    </span>
+
+
+
+                  </div>
+
+
+
+                </div>
+
+
+
+              </div>
+
+
+
+              <div class="form-group mt-16">
+
+
+
+                <label class="form-label">Stream Path</label>
+
+
+
+                <input type="text" class="form-control" id="cam2-path" value="/stream1" placeholder="/stream1" oninput="CameraPage.updateRtspPreview('cam2')" />
+
+
+
+              </div>
+
+
+
+              <!-- RTSP Preview -->
+
+
+
+              <div class="rtsp-preview" id="cam2-rtsp-preview">
+
+
+
+                <div class="rtsp-label">RTSP URL Preview</div>
+
+
+
+                <span id="cam2-rtsp-url">—</span>
+
+
+
+              </div>
+
+
+
+              <!-- Action Buttons -->
+
+
+
+              <div class="d-flex gap-8 mt-16">
+
+
+
+                <button class="btn btn-primary" onclick="CameraPage.connect('cam2')">
+
+
+
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+
+
+
+                    <path d="M5 12h14"/><path d="M12 5l7 7-7 7"/>
+
+
+
+                  </svg>
+
+
+
+                  Connect
+
+
+
+                </button>
+
+
+
+                <button class="btn btn-danger" onclick="CameraPage.disconnect('cam2')">
+
+
+
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+
+
+
+                    <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+
+
+
+                  </svg>
+
+
+
+                  Disconnect
+
+
+
+                </button>
+
+
+
+                <button class="btn btn-secondary" onclick="CameraPage.test('cam2')">
+
+
+
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+
+
+
+                    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+
+
+
+                  </svg>
+
+
+
+                  Test
+
+
+
+                </button>
+
+
+
+              </div>
+
+
+
+              <!-- Camera Preview -->
+
+
+
+              <div class="cam-feed-wrap mt-16">
+
+
+
+                <img src="/video_feed?cam=cam2" alt="Camera 2 Feed" id="cam2-preview"
+
+
+
+                     style="width:100%;height:100%;object-fit:cover"
+
+
+
+                     onerror="this.style.display='none';document.getElementById('cam2-no-signal').style.display='flex'"
+
+
+
+                     onload="document.getElementById('cam2-no-signal').style.display='none';this.style.display='block'" />
+
+
+
+                <div class="cam-no-signal" id="cam2-no-signal" style="display:none">
+
+
+
+                  <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+
+
+
+                    <path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+
+
+
+                    <line x1="1" y1="1" x2="23" y2="23"/>
+
+
+
+                  </svg>
+
+
+
+                  <p>No Signal</p>
+
+
+
+                </div>
+
+
+
+              </div>
+
+
+
+              <!-- Test Result -->
+
+
+
+              <div id="cam2-test-result" style="display:none;margin-top:10px;" class="text-sm"></div>
+
+
+
+            </div>
+
+
+
+          </div>
+
+
+
+        </div>
+
+
+
+      </div>
+
+
+
+
+
+
+
+      <!-- ════════ PAGE: LIVE MONITORING ════════ -->
+
+
+
+      <div class="page" id="page-monitor">
+
+
+
+        <div class="d-flex align-center justify-between mb-20 flex-wrap gap-12">
+
+
+
+          <div>
+
+
+
+            <p class="text-muted text-sm" id="monitorSubtitle">AI-powered real-time surveillance</p>
+
+
+
+          </div>
+
+
+
+          <div class="d-flex gap-12 align-center">
+
+
+
+            <button class="btn btn-primary" id="btnMonitorAddCamera" onclick="CameraPage.addCamera(); MonitorPage.onEnter();" style="background:#3E6AE1;border-color:#3E6AE1;color:#FFFFFF;display:inline-flex;align-items:center;gap:8px;font-weight:600;padding:8px 16px;border-radius:10px;box-shadow:0 4px 14px rgba(62, 106, 225, 0.32);cursor:pointer;font-size:0.875rem;">
+
+
+
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+
+
+
+                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+
+
+
+              </svg>
+
+
+
+              <span data-i18n="cam.addCamera">เพิ่มกล้อง</span>
+
+
+
+            </button>
+
+
+
+            <div class="view-toggle">
+
+
+
+              <button class="view-toggle-btn active" id="viewDual" onclick="MonitorPage.setView('dual')">Grid View</button>
+
+
+
+              <button class="view-toggle-btn" id="viewSingle" onclick="MonitorPage.setView('single')">Single View</button>
+
+
+
+            </div>
+
+
+
+          </div>
+
+
+
+        </div>
+
+
+
+
+
+
+
+        <!-- Grid View (All Active Cameras) -->
+
+
+
+        <div class="grid-cam" id="dualViewGrid">
+
+
+
+          <!-- Monitor Cam 1 -->
+
+
+
+          <div class="monitor-card" data-cam-id="cam1" id="mon-card-cam1">
+
+
+
+            <div class="monitor-card-header">
+
+
+
+              <h3 id="mon1-title">Camera 1</h3>
+
+
+
+              <div class="d-flex align-center gap-8">
+
+
+
+                <span class="live-badge"><span class="live-dot"></span>LIVE</span>
+
+
+
+                <button class="fullscreen-btn" onclick="MonitorPage.fullscreen('mon1-feed')" title="Fullscreen">
+
+
+
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+
+
+
+                    <polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/>
+
+
+
+                    <line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/>
+
+
+
+                  </svg>
+
+
+
+                </button>
+
+
+
+              </div>
+
+
+
+            </div>
+
+
+
+            <div class="cam-feed-wrap" style="border-radius:0 0 var(--radius-lg) var(--radius-lg);">
+
+
+
+              <div class="cam-overlay-top">
+
+
+
+                <div class="cam-info">
+
+
+
+                  <div class="cam-name" id="mon1-cam-name">CAM 01</div>
+
+
+
+                  <div class="cam-ip" id="mon1-cam-ip">—</div>
+
+
+
+                </div>
+
+
+
+              </div>
+
+
+
+              <img src="/video_feed?cam=cam1" id="mon1-feed" alt="Camera 1"
+
+
+
+                   style="width:100%;height:100%;object-fit:cover;min-height:240px"
+
+
+
+                   onerror="MonitorPage.showNoSignal('mon1')"
+
+
+
+                   onload="MonitorPage.trackFrame('mon1')" />
+
+
+
+              <div class="cam-no-signal" id="mon1-no-signal" style="display:none;min-height:240px">
+
+
+
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+
+
+
+                <p>No Signal – Camera Offline</p>
+
+
+
+              </div>
+
+
+
+              <div class="cam-overlay-bottom">
+
+
+
+                <div class="cam-stats">
+
+
+
+                  <span class="cam-stat-item">FPS: <strong id="mon1-fps">—</strong></span>
+
+
+
+                  <span class="cam-stat-item">Det: <strong id="mon1-det">0</strong></span>
+
+
+
+                </div>
+
+
+
+              </div>
+
+
+
+              <div class="cam-detect-alert" id="mon1-alert" style="display:none">
+
+
+
+                ⚠ PHONE DETECTED
+
+
+
+              </div>
+
+
+
+            </div>
+
+
+
+          </div>
+
+
+
+
+
+
+
+          <!-- Monitor Cam 2 -->
+
+
+
+          <div class="monitor-card" data-cam-id="cam2" id="mon-card-cam2">
+
+
+
+            <div class="monitor-card-header">
+
+
+
+              <h3 id="mon2-title">Camera 2</h3>
+
+
+
+              <div class="d-flex align-center gap-8">
+
+
+
+                <span class="live-badge"><span class="live-dot"></span>LIVE</span>
+
+
+
+                <button class="fullscreen-btn" onclick="MonitorPage.fullscreen('mon2-feed')" title="Fullscreen">
+
+
+
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+
+
+
+                    <polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/>
+
+
+
+                    <line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/>
+
+
+
+                  </svg>
+
+
+
+                </button>
+
+
+
+              </div>
+
+
+
+            </div>
+
+
+
+            <div class="cam-feed-wrap" style="border-radius:0 0 var(--radius-lg) var(--radius-lg);">
+
+
+
+              <div class="cam-overlay-top">
+
+
+
+                <div class="cam-info">
+
+
+
+                  <div class="cam-name" id="mon2-cam-name">CAM 02</div>
+
+
+
+                  <div class="cam-ip" id="mon2-cam-ip">—</div>
+
+
+
+                </div>
+
+
+
+              </div>
+
+
+
+              <img src="/video_feed?cam=cam2" id="mon2-feed" alt="Camera 2"
+
+
+
+                   style="width:100%;height:100%;object-fit:cover;min-height:240px"
+
+
+
+                   onerror="MonitorPage.showNoSignal('mon2')"
+
+
+
+                   onload="MonitorPage.trackFrame('mon2')" />
+
+
+
+              <div class="cam-no-signal" id="mon2-no-signal" style="display:none;min-height:240px">
+
+
+
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+
+
+
+                <p>No Signal – Camera Offline</p>
+
+
+
+              </div>
+
+
+
+              <div class="cam-overlay-bottom">
+
+
+
+                <div class="cam-stats">
+
+
+
+                  <span class="cam-stat-item">FPS: <strong id="mon2-fps">—</strong></span>
+
+
+
+                  <span class="cam-stat-item">Det: <strong id="mon2-det">0</strong></span>
+
+
+
+                </div>
+
+
+
+              </div>
+
+
+
+              <div class="cam-detect-alert" id="mon2-alert" style="display:none">
+
+
+
+                ⚠ PHONE DETECTED
+
+
+
+              </div>
+
+
+
+            </div>
+
+
+
+          </div>
+
+
+
+        </div>
+
+
+
+
+
+
+
+        <!-- Single View -->
+
+
+
+        <div id="singleViewGrid" style="display:none">
+
+
+
+          <div class="d-flex gap-8 mb-12 flex-wrap" id="singleCamButtons">
+
+
+
+            <button class="btn btn-secondary btn-sm" onclick="MonitorPage.switchSingle('cam1')">Camera 1</button>
+
+
+
+            <button class="btn btn-secondary btn-sm" onclick="MonitorPage.switchSingle('cam2')">Camera 2</button>
+
+
+
+          </div>
+
+
+
+          <div class="monitor-card">
+
+
+
+            <div class="monitor-card-header">
+
+
+
+              <h3 id="singleCamTitle">Camera 1</h3>
+
+
+
+              <div class="d-flex align-center gap-8">
+
+
+
+                <span class="live-badge"><span class="live-dot"></span>LIVE</span>
+
+
+
+              </div>
+
+
+
+            </div>
+
+
+
+            <div class="cam-feed-wrap" style="border-radius:0 0 var(--radius-lg) var(--radius-lg);">
+
+
+
+              <img src="/video_feed?cam=cam1" id="single-feed" alt="Single Feed"
+
+
+
+                   style="width:100%;height:100%;object-fit:cover;min-height:420px" />
+
+
+
+              <div class="cam-detect-alert" id="single-alert" style="display:none">
+
+
+
+                ⚠ PHONE DETECTED
+
+
+
+              </div>
+
+
+
+            </div>
+
+
+
+          </div>
+
+
+
+        </div>
+
+
+
+      </div>
+
+
+
+
+
+
+
+      <!-- ════════ PAGE: DETECTION HISTORY ════════ -->
+
+
+
+      <div class="page" id="page-history">
+
+
+
+        <!-- Filter Bar -->
+
+
+
+        <div class="filter-bar">
+
+
+
+          <div class="filter-search">
+
+
+
+            <svg class="filter-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+
+
+
+            <input type="text" class="form-control" id="historySearch" placeholder="Search detections…" oninput="HistoryPage.render()" />
+
+
+
+          </div>
+
+
+
+          <input type="date" class="form-control" id="historyDate" style="max-width:160px" onchange="HistoryPage.render()" />
+
+
+
+          <select class="form-control" id="historyCamFilter" style="max-width:160px" onchange="HistoryPage.render()">
+
+
+
+            <option value="">All Cameras</option>
+
+
+
+            <option value="cam1">CAM 01 (หน้าห้อง)</option>
+
+
+
+            <option value="cam2">CAM 02 (หลังห้อง)</option>
+
+
+
+            <option value="cam3">CAM 03 (ทางเดิน)</option>
+
+
+
+          </select>
+
+
+
+          <select class="form-control" id="historyStatusFilter" style="max-width:180px" onchange="HistoryPage.render()">
+
+
+
+            <option value="">All Statuses (ทั้งหมด)</option>
+
+
+
+            <option value="confirmed">Confirmed Violations (ยืนยันแล้ว)</option>
+
+
+
+            <option value="pending">Pending Review (รอตรวจสอบ)</option>
+
+
+
+            <option value="false_alarm">False Alarm (ไม่พบความผิด)</option>
+
+
+
+            <option value="suspicious">Suspicious / Cheating</option>
+
+
+
+            <option value="phone">Phone Detected</option>
+
+
+
+          </select>
+
+
+
+          <button class="btn btn-secondary" onclick="HistoryPage.exportCSV()">
+
+
+
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+
+
+
+              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+
+
+
+            </svg>
+
+
+
+            Export CSV
+
+
+
+          </button>
+
+
+
+          <button class="btn btn-danger btn-sm" onclick="HistoryPage.clearHistory()">Clear</button>
+
+
+
+        </div>
+
+
+
+
+
+
+
+        <div class="card">
+
+
+
+          <div class="card-header">
+
+
+
+            <div class="card-title">
+
+
+
+              <div class="card-icon">
+
+
+
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+
+
+
+              </div>
+
+
+
+              Detection Log
+
+
+
+            </div>
+
+
+
+            <span class="text-muted text-xs" id="historyCount">0 events</span>
+
+
+
+          </div>
+
+
+
+          <div class="card-body" style="padding-top:10px">
+
+
+
+            <div class="table-wrap">
+
+
+
+              <table>
+
+
+
+                <thead>
+
+
+
+                  <tr>
+
+
+
+                    <th>Snapshot</th>
+
+
+
+                    <th>Date &amp; Time</th>
+
+
+
+                    <th><span data-i18n="th.camera">Camera</span></th>
+
+
+
+                    <th>Examinee / Seat</th>
+
+
+
+                    <th>Event / Label</th>
+
+
+
+                    <th><span data-i18n="th.confidence">Confidence</span></th>
+
+
+
+                    <th><span data-i18n="th.status">Status</span></th>
+
+
+
+                    <th>Actions</th>
+
+
+
+                  </tr>
+
+
+
+                </thead>
+
+
+
+                <tbody id="historyTableBody">
+
+
+
+                  <tr>
+
+
+
+                    <td colspan="7">
+
+
+
+                      <div class="empty-state" style="padding:32px">
+
+
+
+                        <div class="empty-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
+
+
+
+                        <h3>No history yet</h3>
+
+
+
+                        <p>Detection events will appear here as they are captured.</p>
+
+
+
+                      </div>
+
+
+
+                    </td>
+
+
+
+                  </tr>
+
+
+
+                </tbody>
+
+
+
+              </table>
+
+
+
+            </div>
+
+
+
+          </div>
+
+
+
+        </div>
+
+
+
+      </div>
+
+
+
+
+
+
+
+      <!-- ════════ PAGE: AI CONFIGURATION ════════ -->
+
+
+
+      <div class="page" id="page-ai">
+
+
+
+        <div class="card">
+
+
+
+          <div class="card-body">
+
+
+
+            <div class="coming-soon">
+
+
+
+              <div class="coming-soon-icon">
+
+
+
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+
+
+
+                  <rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/>
+
+
+
+                  <line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/>
+
+
+
+                  <line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/>
+
+
+
+                  <line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/>
+
+
+
+                  <line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/>
+
+
+
+                </svg>
+
+
+
+              </div>
+
+
+
+              <h2>AI Configuration</h2>
+
+
+
+              <p>Advanced YOLO model settings and CiRA CORE integration options. Fine-tune detection thresholds, model selection, and inference parameters.</p>
+
+
+
+              <span class="coming-soon-badge">🚧 Available in next release</span>
+
+
+
+              <div class="ai-status-box" style="margin-top:8px">
+
+
+
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+
+
+
+                <span>AI Model Status: <strong id="aiStatusText">Checking…</strong></span>
+
+
+
+              </div>
+
+
+
+            </div>
+
+
+
+          </div>
+
+
+
+        </div>
+
+
+
+      </div>
+
+
+
+
+
+
+
+      <!-- ════════ PAGE: SYSTEM SETTINGS ════════ -->
+
+
+
+            <!-- ════════ PAGE: SYSTEM SETTINGS ════════ -->
+
+
+
+      <div class="page" id="page-settings">
+
+
+
+        <div class="settings-vertical-layout">
+
+
+
+
+
+
+
+          <!-- Section 1: ข้อมูลทั่วไปและห้องสอบ (General) -->
+
+
+
+          <div class="card">
+
+
+
+            <div class="card-header">
+
+
+
+              <div class="card-title">
+
+
+
+                <div class="card-icon">
+
+
+
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+
+
+
+                </div>
+
+
+
+                <span>Section 1: ข้อมูลทั่วไปและห้องสอบ (General)</span>
+
+
+
+              </div>
+
+
+
+            </div>
+
+
+
+            <div class="card-body">
+
+
+
+              <div class="form-group">
+
+
+
+                <label class="form-label">ชื่อระบบ</label>
+
+
+
+                <input type="text" class="form-control" id="set-system-name" value="Smart AI Exam Integrity" />
+
+
+
+              </div>
+
+
+
+
+
+
+
+              <div class="form-grid-2">
+
+
+
+                <div class="form-group mb-0">
+
+
+
+                  <label class="form-label">รหัสวิชา / รอบสอบ</label>
+
+
+
+                  <input type="text" class="form-control" id="set-exam-code" value="PHYS-101-MID" />
+
+
+
+                </div>
+
+
+
+                <div class="form-group mb-0">
+
+
+
+                  <label class="form-label">ห้องสอบ</label>
+
+
+
+                  <input type="text" class="form-control" id="set-exam-room" value="Room 301" />
+
+
+
+                </div>
+
+
+
+              </div>
+
+
+
+
+
+
+
+              <div class="form-grid-2 mt-16">
+
+
+
+                <div class="form-group mb-0">
+
+
+
+                  <label class="form-label">ชื่อผู้คุมสอบหลัก</label>
+
+
+
+                  <input type="text" class="form-control" id="set-proctor-name" value="TuNa (Proctor)" />
+
+
+
+                </div>
+
+
+
+                <div class="form-group mb-0">
+
+
+
+                  <label class="form-label">ภาษาเริ่มต้น</label>
+
+
+
+                  <select class="form-control" id="set-language">
+
+
+
+                    <option value="th" selected>ภาษาไทย (TH)</option>
+
+
+
+                    <option value="en">English (EN)</option>
+
+
+
+                  </select>
+
+
+
+                </div>
+
+
+
+              </div>
+
+
+
+            </div>
+
+
+
+          </div>
+
+
+
+
+
+
+
+          <!-- Section 2: เซิร์ฟเวอร์และเครือข่าย (Server) -->
+
+
+
+          <div class="card">
+
+
+
+            <div class="card-header">
+
+
+
+              <div class="card-title">
+
+
+
+                <div class="card-icon">
+
+
+
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
+
+
+
+                </div>
+
+
+
+                <span>Section 2: เซิร์ฟเวอร์และเครือข่าย (Server)</span>
+
+
+
+              </div>
+
+
+
+              <span class="badge badge-success">● Online</span>
+
+
+
+            </div>
+
+
+
+            <div class="card-body">
+
+
+
+              <div class="form-grid-3">
+
+
+
+                <div class="form-group mb-0">
+
+
+
+                  <label class="form-label">Backend URL</label>
+
+
+
+                  <input type="text" class="form-control" id="set-backend-url" value="http://localhost:5000" />
+
+
+
+                </div>
+
+
+
+                <div class="form-group mb-0">
+
+
+
+                  <label class="form-label">พอร์ตใช้งาน</label>
+
+
+
+                  <input type="number" class="form-control" id="set-port" value="5000" />
+
+
+
+                </div>
+
+
+
+                <div class="form-group mb-0">
+
+
+
+                  <label class="form-label">CiRA CORE Port (UDP)</label>
+
+
+
+                  <input type="number" class="form-control" id="set-cira-port" value="5055" />
+
+
+
+                </div>
+
+
+
+              </div>
+
+
+
+
+
+
+
+              <div class="network-ip-display">
+
+
+
+                <div>
+
+
+
+                  <div class="network-ip-title">IP เครื่องที่แชร์สำหรับเปิดจากเครื่องอื่น</div>
+
+
+
+                  <div style="font-size:0.76rem;color:var(--text-muted,#64748b);margin-top:2px;">ใช้งานผ่าน Wi-Fi หรือสาย LAN วงเดียวกัน</div>
+
+
+
+                </div>
+
+
+
+                <div class="network-ip-code">10.99.222.178 / 192.168.1.36</div>
+
+
+
+              </div>
+
+
+
+            </div>
+
+
+
+          </div>
+
+
+
+
+
+
+
+          <!-- Section 3: เสียงและการแจ้งเตือน (Notifications) -->
+
+
+
+          <div class="card">
+
+
+
+            <div class="card-header">
+
+
+
+              <div class="card-title">
+
+
+
+                <div class="card-icon">
+
+
+
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+
+
+
+                </div>
+
+
+
+                <span>Section 3: เสียงและการแจ้งเตือน (Notifications)</span>
+
+
+
+              </div>
+
+
+
+            </div>
+
+
+
+            <div class="card-body">
+
+
+
+              <div class="toggle-row">
+
+
+
+                <div>
+
+
+
+                  <div class="toggle-info-title">เปิดเสียงไซเรนเตือนเมื่อพบการทุจริต</div>
+
+
+
+                  <div class="toggle-info-desc">ส่งเสียงบี๊บแจ้งเตือนไปยังผู้คุมสอบทันทีที่พบความผิดปกติ</div>
+
+
+
+                </div>
+
+
+
+                <label class="switch-ui"><input type="checkbox" id="set-alert-sound" checked /><span class="switch-slider"></span></label>
+
+
+
+              </div>
+
+
+
+
+
+
+
+              <div class="toggle-row">
+
+
+
+                <div>
+
+
+
+                  <div class="toggle-info-title">แสดงป๊อปอัปแจ้งเตือนมุมจอ (Toast)</div>
+
+
+
+                  <div class="toggle-info-desc">แสดงการ์ดสรุปเหตุการณ์ที่มุมขวาบนของหน้าจอแบบเรียลไทม์</div>
+
+
+
+                </div>
+
+
+
+                <label class="switch-ui"><input type="checkbox" id="set-toast" checked /><span class="switch-slider"></span></label>
+
+
+
+              </div>
+
+
+
+
+
+
+
+              <div class="toggle-row">
+
+
+
+                <div>
+
+
+
+                  <div class="toggle-info-title">ระยะเวลาแสดงป๊อปอัป</div>
+
+
+
+                  <div class="toggle-info-desc">ระยะเวลาก่อนที่ป๊อปอัปแจ้งเตือนจะหายไปโดยอัตโนมัติ</div>
+
+
+
+                </div>
+
+
+
+                <div style="display:flex;align-items:center;gap:10px;">
+
+
+
+                  <input type="number" class="form-control" id="set-toast-duration" value="5" min="1" max="60" style="width:80px;text-align:center;" />
+
+
+
+                  <span style="font-size:0.85rem;color:var(--text-muted,#64748b);font-weight:500;">วินาที</span>
+
+
+
+                </div>
+
+
+
+              </div>
+
+
+
+
+
+
+
+              <div class="toggle-row">
+
+
+
+                <div>
+
+
+
+                  <div class="toggle-info-title">ตรวจจับแล้วเปิดหลักฐานทันที</div>
+
+
+
+                  <div class="toggle-info-desc">เปิดหน้าต่าง Evidence Player Modal อัตโนมัติเมื่อพบการทุจริตระดับวิกฤต</div>
+
+
+
+                </div>
+
+
+
+                <label class="switch-ui"><input type="checkbox" id="set-auto-open-evidence" checked /><span class="switch-slider"></span></label>
+
+
+
+              </div>
+
+
+
+
+
+
+
+              <div class="toggle-row">
+
+
+
+                <div>
+
+
+
+                  <div class="toggle-info-title">โหมดเงียบ (Mute All)</div>
+
+
+
+                  <div class="toggle-info-desc">ปิดเสียงเตือนทั้งหมดในระบบเพื่อหลีกเลี่ยงการรบกวนสมาธิในห้องสอบ</div>
+
+
+
+                </div>
+
+
+
+                <label class="switch-ui"><input type="checkbox" id="set-mute-all" /><span class="switch-slider"></span></label>
+
+
+
+              </div>
+
+
+
+            </div>
+
+
+
+          </div>
+
+
+
+
+
+
+
+          <!-- Section 4: จัดการฐานข้อมูลและไฟล์หลักฐาน (Storage & Database) -->
+
+
+
+          <div class="card">
+
+
+
+            <div class="card-header">
+
+
+
+              <div class="card-title">
+
+
+
+                <div class="card-icon">
+
+
+
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+
+
+
+                </div>
+
+
+
+                <span>Section 4: จัดการฐานข้อมูลและไฟล์หลักฐาน (Storage & Database)</span>
+
+
+
+              </div>
+
+
+
+            </div>
+
+
+
+            <div class="card-body">
+
+
+
+              <div class="form-group mb-0">
+
+
+
+                <label class="field-label" style="font-size:0.82rem;font-weight:600;display:block;margin-bottom:6px;">ตำแหน่งเก็บไฟล์</label>
+
+
+
+                <div style="display:flex;gap:10px;align-items:center;">
+
+
+
+                  <input type="text" class="form-control" id="set-storage-path" value="C:\Users\WOSAN\Downloads\DASHBOARDCCTV\DASHBOARDCCTV\snapshots" readonly />
+
+
+
+                  <button class="btn-choose-folder" type="button" onclick="Notifications.showToast('Folder Path', 'ตำแหน่งเก็บไฟล์ถูกกำหนดไว้ที่โฟลเดอร์ snapshots ในระบบ', 'info')">
+
+
+
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+
+
+
+                    เลือกโฟลเดอร์
+
+
+
+                  </button>
+
+
+
+                </div>
+
+
+
+              </div>
+
+
+
+
+
+
+
+              <div class="storage-stat-grid">
+
+
+
+                <div class="storage-stat-box">
+
+
+
+                  <div class="storage-stat-icon">🎬</div>
+
+
+
+                  <div class="storage-stat-content">
+
+
+
+                    <h4 id="setStorageMediaCount">20 ไฟล์ (10 คลิป, 10 ภาพ)</h4>
+
+
+
+                    <p>จำนวนคลิปวิดีโอและภาพถ่ายหลักฐานใน snapshots/</p>
+
+
+
+                  </div>
+
+
+
+                </div>
+
+
+
+                <div class="storage-stat-box">
+
+
+
+                  <div class="storage-stat-icon">📊</div>
+
+
+
+                  <div class="storage-stat-content">
+
+
+
+                    <h4 id="setStorageDbCount">15 รายการ</h4>
+
+
+
+                    <p>จำนวนประวัติการตรวจจับในฐานข้อมูล SQLite</p>
+
+
+
+                  </div>
+
+
+
+                </div>
+
+
+
+              </div>
+
+
+
+
+
+
+
+              <div style="display:flex;gap:12px;margin-top:4px;flex-wrap:wrap;">
+
+
+
+                <button class="btn-backup" type="button" onclick="SettingsPage.backupDB()">
+
+
+
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+
+
+
+                  Backup DB
+
+
+
+                </button>
+
+
+
+                <button class="btn-clear" type="button" onclick="SettingsPage.clearHistoryPrompt()">
+
+
+
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+
+
+
+                  Clear History
+
+
+
+                </button>
+
+
+
+              </div>
+
+
+
+            </div>
+
+
+
+          </div>
+
+
+
+
+
+
+
+          <!-- Footer Actions -->
+
+
+
+          <div style="display:flex;align-items:center;gap:14px;padding-top:8px;padding-bottom:24px;">
+
+
+
+            <button class="btn btn-primary" type="button" onclick="SettingsPage.save()" style="background:#1D4ED8;border-color:#1D4ED8;padding:12px 28px;font-size:0.92rem;font-weight:600;border-radius:var(--radius-sm,8px);box-shadow:0 4px 12px rgba(29,78,216,0.35);display:inline-flex;align-items:center;gap:8px;">
+
+
+
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+
+
+
+              Save Settings
+
+
+
+            </button>
+
+
+
+            <button class="btn btn-secondary" type="button" onclick="SettingsPage.load()" style="padding:12px 22px;font-size:0.92rem;font-weight:600;border-radius:var(--radius-sm,8px);">
+
+
+
+              Reset Default
+
+
+
+            </button>
+
+
+
+          </div>
+
+
+
+
+
+
+
+        </div>
+
+
+
+      </div>
+
+
+
+
+
+
+
+    </div><!-- /page-container -->
+
+
+
+  </div><!-- /main-content -->
+
+
+
+</div><!-- /app-shell -->
+
+
+
+
+
+
+
+<!-- Evidence Player Modal (Diagram 3 & 10s Clip Replay) -->
+
+
+
+<div class="evidence-modal-backdrop" id="evidenceModal" style="display:none;" onclick="if(event.target===this) HistoryPage.closeEvidenceModal()">
+
+
+
+  <div class="evidence-modal-content">
+
+
+
+    <div class="evidence-modal-header">
+
+
+
+      <div class="evidence-modal-title-box">
+
+
+
+        <div class="evidence-icon-badge">
+
+
+
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+
+
+
+        </div>
+
+
+
+        <div>
+
+
+
+          <h3 id="evModalTitle" style="margin:0;font-size:1.1rem;font-weight:700;color:var(--text-color,#1e293b)">AI Incident Evidence</h3>
+
+
+
+          <p id="evModalSubtitle" style="margin:2px 0 0;font-size:0.8rem;color:var(--text-muted,#64748b)">Evidence clip review and proctor verification</p>
+
+
+
+        </div>
+
+
+
+      </div>
+
+
+
+      <button class="modal-close-btn" onclick="HistoryPage.closeEvidenceModal()" title="Close">✕</button>
+
+
+
+    </div>
+
+
+
+
+
+
+
+    <div class="evidence-modal-body">
+
+
+
+      <!-- Left Column: Video or Snapshot Player -->
+
+
+
+      <div class="evidence-media-col">
+
+
+
+        <div class="evidence-media-wrapper" id="evMediaWrapper">
+
+
+
+          <video id="evVideoPlayer" controls autoplay loop playsinline style="width:100%;height:100%;object-fit:contain;background:#000;border-radius:10px;display:none;"></video>
+
+
+
+          <img id="evImagePreview" src="" alt="Evidence Snapshot" style="width:100%;height:100%;object-fit:contain;background:#050505;border-radius:10px;display:none;" />
+
+
+
+          <div class="evidence-rec-badge">
+
+
+
+            <span class="rec-dot"></span>
+
+
+
+            <span>10S EVIDENCE CLIP</span>
+
+
+
+          </div>
+
+
+
+        </div>
+
+
+
+        <div class="evidence-media-meta">
+
+
+
+          <span id="evCamBadge" class="ev-tag">CAM 01</span>
+
+
+
+          <span id="evTimeBadge" class="ev-tag">--:--:--</span>
+
+
+
+          <span id="evSessionBadge" class="ev-tag session-tag">PHYS-101-MID</span>
+
+
+
+        </div>
+
+
+
+      </div>
+
+
+
+
+
+
+
+      <!-- Right Column: Details & Proctor Action -->
+
+
+
+      <div class="evidence-details-col">
+
+
+
+        <div class="evidence-meta-card">
+
+
+
+          <div class="meta-row">
+
+
+
+            <span class="meta-label">Examinee:</span>
+
+
+
+            <span class="meta-val font-semibold" id="evStudentName">—</span>
+
+
+
+          </div>
+
+
+
+          <div class="meta-row">
+
+
+
+            <span class="meta-label">Seat Number:</span>
+
+
+
+            <span class="meta-val" id="evSeatNumber">—</span>
+
+
+
+          </div>
+
+
+
+          <div class="meta-row">
+
+
+
+            <span class="meta-label">Detection Type:</span>
+
+
+
+            <span class="meta-val text-primary" id="evEventType">—</span>
+
+
+
+          </div>
+
+
+
+          <div class="meta-row">
+
+
+
+            <span class="meta-label">AI Confidence:</span>
+
+
+
+            <span class="meta-val" id="evConfidence">—</span>
+
+
+
+          </div>
+
+
+
+          <div class="meta-row">
+
+
+
+            <span class="meta-label">Review Status:</span>
+
+
+
+            <span class="meta-val" id="evStatusBadge"><span class="badge-pending">Pending</span></span>
+
+
+
+          </div>
+
+
+
+        </div>
+
+
+
+
+
+
+
+        <div class="evidence-notes-section">
+
+
+
+          <label class="notes-label">AI Detection Rationale / Incident Notes</label>
+
+
+
+          <div class="ai-rationale-box" id="evAiNotes">—</div>
+
+
+
+        </div>
+
+
+
+
+
+
+
+        <div class="evidence-proctor-section">
+
+
+
+          <label class="notes-label" for="evProctorNotes">Proctor Review Note (บันทึกผู้คุมสอบ)</label>
+
+
+
+          <textarea id="evProctorNotes" class="form-control" rows="2" placeholder="กรอกบันทึกการตรวจสอบ หรือมาตรการดำเนินการ..."></textarea>
+          <div class="proctor-actions-grid" style="margin-top:28px;">
+            <button class="btn btn-danger-action" id="btnConfirmViolation" onclick="HistoryPage.submitReview('confirmed')">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              <span>ยืนยันพบการทุจริต (Confirm)</span>
+            </button>
+            <button class="btn btn-success-action" id="btnDismissViolation" onclick="HistoryPage.submitReview('false_alarm')">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+              <span>ระบุว่าปกติ (Mark Clear)</span>
+            </button>
+          </div>
+
+
+
+        </div>
+
+
+
+      </div>
+
+
+
+    </div>
+
+
+
+  </div>
+
+
+
+</div>
+
+
+
+
+
+
+
+<!-- Toast Container -->
+
+
+
+<div class="toast-container" id="toastContainer"></div>
+
+
+
+
+
+
+
+<script src="app.js"></script>
+
+  <!-- Logout Confirmation Custom Modal -->
+  <style>
+    .logout-modal-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 999999;
+      background: rgba(15, 23, 42, 0.75);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      animation: logoutFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    @keyframes logoutFadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    @keyframes logoutScaleIn {
+      from { opacity: 0; transform: scale(0.92) translateY(10px); }
+      to { opacity: 1; transform: scale(1) translateY(0); }
+    }
+    .logout-modal-card {
+      background: #1E293B;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 20px;
+      width: 100%;
+      max-width: 380px;
+      padding: 28px 24px 24px;
+      text-align: center;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.05);
+      animation: logoutScaleIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      color: #F8FAFC;
+      font-family: inherit;
+    }
+    .logout-modal-icon {
+      width: 58px;
+      height: 58px;
+      margin: 0 auto 16px;
+      border-radius: 16px;
+      background: rgba(239, 68, 68, 0.14);
+      border: 1px solid rgba(239, 68, 68, 0.28);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .logout-modal-title {
+      margin: 0 0 8px;
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: #F8FAFC;
+    }
+    .logout-modal-desc {
+      margin: 0 0 24px;
+      font-size: 0.92rem;
+      color: #94A3B8;
+      line-height: 1.5;
+    }
+    .logout-modal-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .btn-logout-cancel {
+      flex: 1;
+      padding: 12px 16px;
+      border-radius: 12px;
+      border: 1px solid rgba(148, 163, 184, 0.25);
+      background: rgba(255, 255, 255, 0.06);
+      color: #CBD5E1;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .btn-logout-cancel:hover {
+      background: rgba(255, 255, 255, 0.12);
+      color: #FFFFFF;
+      border-color: rgba(148, 163, 184, 0.4);
+    }
+    .btn-logout-confirm {
+      flex: 1;
+      padding: 12px 16px;
+      border-radius: 12px;
+      border: none;
+      background: linear-gradient(135deg, #EF4444, #DC2626);
+      color: #FFFFFF;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      box-shadow: 0 4px 14px rgba(239, 68, 68, 0.35);
+      transition: all 0.2s ease;
+    }
+    .btn-logout-confirm:hover {
+      background: linear-gradient(135deg, #DC2626, #B91C1C);
+      box-shadow: 0 6px 18px rgba(239, 68, 68, 0.45);
+      transform: translateY(-1px);
+    }
+    .btn-logout-confirm:active {
+      transform: translateY(0);
+    }
+  </style>
+
+  <div id="logoutConfirmModal" class="logout-modal-backdrop" style="display:none;" onclick="if(event.target===this) closeLogoutModal()">
+    <div class="logout-modal-card" role="dialog" aria-modal="true" aria-labelledby="logoutModalTitle">
+      <div class="logout-modal-icon">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#EF4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+          <polyline points="16 17 21 12 16 7"></polyline>
+          <line x1="21" y1="12" x2="9" y2="12"></line>
+        </svg>
+      </div>
+      <h3 id="logoutModalTitle" class="logout-modal-title">ยืนยันการออกจากระบบ</h3>
+      <p class="logout-modal-desc">คุณต้องการออกจากระบบเฝ้าระวังการสอบใช่หรือไม่?</p>
+      <div class="logout-modal-actions">
+        <button type="button" class="btn-logout-cancel" onclick="closeLogoutModal()">ยกเลิก</button>
+        <button type="button" class="btn-logout-confirm" onclick="executeLogout()">ยืนยัน</button>
+      </div>
+    </div>
+  </div>
+
+</body>
+
+</html>
+
+
+

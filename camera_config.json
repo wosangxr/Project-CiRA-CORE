@@ -1,0 +1,14 @@
+{
+  "cam1": {
+    "name": "Camera 01 (IP Camera 10.114.70.75)",
+    "url": "rtsp://Tuna1234:Tuna1234@10.114.70.75:554/stream2"
+  },
+  "cam2": {
+    "name": "cam2",
+    "url": ""
+  },
+  "cam4": {
+    "name": "CAM 04",
+    "url": ""
+  }
+}
