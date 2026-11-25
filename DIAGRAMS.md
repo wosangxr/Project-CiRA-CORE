@@ -139,3 +139,52 @@ flowchart LR
     Router <-->|http://raspberrypi.local:5000| PC
     Router <-->|http://raspberrypi.local:5000| Tablet
 ```
+
+---
+
+## 4. Project File Architecture & Component Interaction Diagram
+
+```mermaid
+flowchart TD
+    subgraph SCRIPT["🚀 Startup & Deployment Layer"]
+        start_sh["start.sh<br/>(Raspberry Pi Auto-Boot Script)"]
+        start_bat["start.bat<br/>(Windows One-Click Launcher)"]
+        sync_py["sync_to_pi.py / upload_to_board.bat<br/>(Automated SSH/SFTP Deployment)"]
+    end
+
+    subgraph BACKEND["🧠 Core Processing & AI Engine"]
+        cfg["camera_config.json<br/>(CCTV RTSP Configuration)"]
+        yolo_pt["yolov8n.pt<br/>(YOLOv8 Deep Learning Weights)"]
+        server_py["server.py<br/>(Flask Server, AI Loop & CCTV Stream Handler)"]
+        
+        cfg -->|Reads RTSP Stream URLs| server_py
+        yolo_pt -->|Loads Model Weights| server_py
+        start_sh -->|Executes Server| server_py
+        start_bat -->|Executes Server| server_py
+    end
+
+    subgraph STORAGE["💾 Data & Evidence Storage Layer"]
+        db[("detections.db<br/>(SQLite Incident Logs)")]
+        snapshots["snapshots/<br/>(Recorded MP4 Clips & JPG Snapshots)"]
+        
+        server_py -->|Write Incident Records| db
+        server_py -->|Save 10s Video Buffer & Snapshot| snapshots
+    end
+
+    subgraph FRONTEND["🖥️ Web Dashboard & UI Layer"]
+        login_html["admin_login.html / login.html<br/>(Administrator Login Portal)"]
+        index_html["index.html<br/>(Main CCTV Monitoring Dashboard)"]
+        app_js["app.js<br/>(Frontend Logic & Real-time Polling)"]
+        style_css["style.css<br/>(Dark Glassmorphism Theme)"]
+        
+        login_html -->|Auth Request /api/admin/login| server_py
+        server_py -->|Validate Token & Redirect| index_html
+        index_html -->|Apply Styling| style_css
+        index_html -->|Execute Client Logic| app_js
+        app_js -->|Poll API & Fetch Live Stream Feeds| server_py
+        app_js -->|Read Evidence Videos for Playback| snapshots
+    end
+
+    sync_py -.->|Deploy Backend Code via SSH| BACKEND
+    sync_py -.->|Deploy UI Assets via SSH| FRONTEND
+```
