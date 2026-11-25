@@ -1,150 +1,141 @@
-# 📊 แผนภาพระบบ Smart AI Exam Integrity CCTV Dashboard
-### CPE-447 Project: CiRA CORE & AI Edge Computing
+# 📊 Smart AI Exam Integrity CCTV Dashboard — Technical Diagrams
+### CPE-447 Project: CiRA CORE & AI Edge Computing Architecture
 
-เอกสารนี้รวบรวมไดอะแกรมสำคัญ 3 รูปแบบ สำหรับนำไปใช้งานใน **สไลด์พรีเซนเทชัน (PowerPoint / Canva)** และ **เล่มรายงานโครงงาน (Project Report)**
+Comprehensive technical diagrams for project presentation slides (PowerPoint / Canva) and engineering documentation.
 
 ---
 
-## 1. System Architecture Diagram (สถาปัตยกรรมระบบโดยรวม)
-แผนภาพแสดงโครงสร้างการทำงานทั้ง 4 เลเยอร์ ตั้งแต่การรับสัญญาณภาพ AI ตรวจจับ ฐานข้อมูล จนถึงแดชบอร์ดแสดงผล
+## 1. System Architecture Diagram
 
 ```mermaid
 flowchart TD
-    subgraph Layer1["1. เลเยอร์ฮาร์ดแวร์ & เซนเซอร์ (Hardware Layer)"]
-        cam1["📹 กล้อง CCTV RTSP ตัวที่ 1 (ห้องสอบ)"]
-        cam2["📹 กล้อง CCTV RTSP ตัวที่ 2 (มุมกว้าง)"]
-        rpi["🎛️ บอร์ด Raspberry Pi 4/5 (Edge Computing)"]
-        cam1 -->|RTSP Stream H.264| rpi
-        cam2 -->|RTSP Stream H.264| rpi
+    subgraph Layer1["1. Hardware & Video Ingestion Layer"]
+        CCTV1["CCTV IP Camera 1<br/>(RTSP Stream H.264)"]
+        CCTV2["CCTV IP Camera 2<br/>(RTSP Stream H.264)"]
+        RPI["Raspberry Pi 4 / 5<br/>(Broadcom ARM64 SoC)"]
+        CCTV1 -->|RTSP / TCP Port 554| RPI
+        CCTV2 -->|RTSP / TCP Port 554| RPI
     end
 
-    subgraph Layer2["2. เลเยอร์การประมวลผล AI (Edge AI Engine)"]
-        cv["OpenCV Video Ingestion & Frame Processing"]
-        yolo["YOLOv8 AI Inference Engine"]
-        logic["ระบบประเมินพฤติกรรม (Behavior Logic & Temporal Filter)"]
-        roi["Seat Zone ROI Mapping (พิกัดโซนที่นั่งสอบ)"]
+    subgraph Layer2["2. Edge AI & Computer Vision Layer (CiRA CORE / YOLOv8)"]
+        CV["OpenCV (cv2)<br/>Video Ingestion & Frame Preprocessing"]
+        YOLO["YOLOv8n Deep Learning Model<br/>(Ultralytics Engine)"]
+        Behavior["Temporal Behavior Analysis<br/>(Sustained Threshold Filter)"]
         
-        rpi --> cv
-        cv --> yolo
-        yolo --> logic
-        roi --> logic
+        RPI --> CV
+        CV -->|RGB Frame 640x640| YOLO
+        YOLO -->|Bounding Box & Class Conf| Behavior
         
-        logic --> detPhone["📱 ตรวจจับการใช้มือถือ (Phone Detection)"]
-        logic --> detBook["📖 ตรวจจับการเปิดเอกสาร (Book/Note Detection)"]
-        logic --> detHead["👀 ตรวจจับการหันศีรษะผิดปกติ (> 45° ต่อเนื่อง 2.5s)"]
+        Behavior --> D1["Smartphone Detection<br/>(class: cell phone)"]
+        Behavior --> D2["Unauthorized Materials<br/>(class: book / notes)"]
+        Behavior --> D3["Suspicious Head Yaw Deviation<br/>(Head Turned &gt; 2.5s)"]
     end
 
-    subgraph Layer3["3. เลเยอร์เซิร์ฟเวอร์ & ฐานข้อมูล (Backend & Storage)"]
-        flask["Flask Application Server (Port 5000)"]
-        db[("SQLite Database: detections.db")]
-        storage["คลังหลักฐาน snapshots/ (MP4 Video & JPG)"]
-        systemd["Linux systemd Service (Auto-Boot on Power)"]
+    subgraph Layer3["3. Backend, Storage & Daemon Layer"]
+        Flask["Flask REST API Server<br/>(Python 3 / Threaded)"]
+        DB[("SQLite3 Database<br/>(detections.db)")]
+        Storage["Evidence Storage<br/>(MP4 Video Clips &amp; JPG Snapshots)"]
+        Systemd["Linux systemd Service<br/>(Auto-boot on Power On)"]
         
-        logic -->|บันทึกประวัติการโกง| db
-        logic -->|บันทึกคลิปหลักฐาน 10 วินาที| storage
-        logic -->|แจ้งเตือนแบบเรียลไทม์| flask
-        systemd -->|สั่งรันระบบอัตโนมัติเมื่อเสียบไฟ| flask
+        Behavior -->|Log Incident Timestamp &amp; Confidence| DB
+        Behavior -->|Buffer &amp; Encode 10s MP4 Clip| Storage
+        Behavior -->|Real-time Alert Event Dispatch| Flask
+        Systemd -->|Daemon Lifecycle Management| Flask
     end
 
-    subgraph Layer4["4. เลเยอร์การแสดงผล & ส่วนติดต่อผู้ใช้ (Dashboard & UI Layer)"]
-        mdns["mDNS Resolver (http://raspberrypi.local:5000)"]
-        auth["ระบบความปลอดภัย (Admin Auth Guard)"]
-        dash["หน้าจอเฝ้าระวังเรียลไทม์ (Live CCTV Dashboard)"]
-        modalEv["หน้าต่างดูหลักฐานย้อนหลัง (Evidence Player Modal)"]
-        modalLog["หน้าต่างป๊อปอัปยืนยันออกจากระบบ (Logout Modal)"]
+    subgraph Layer4["4. Web Management & Presentation Layer"]
+        mDNS["Avahi mDNS Zeroconf<br/>(http://raspberrypi.local:5000)"]
+        Auth["Session Authentication Guard<br/>(Local / Session Token Store)"]
+        UI["Real-Time CCTV Dashboard<br/>(HTML5 / CSS3 / ES6 JavaScript)"]
+        EvidenceModal["Evidence Video Player Modal<br/>(HTML5 Video API)"]
+        LogoutModal["Custom Confirmation Dialog<br/>(DOM Modal Component)"]
         
-        flask --> mdns
-        mdns --> auth
-        auth --> dash
-        dash --> modalEv
-        dash --> modalLog
+        Flask --> mDNS
+        mDNS --> Auth
+        Auth --> UI
+        UI --> EvidenceModal
+        UI --> LogoutModal
         
-        proctorPhone["📱 สมาร์ทโฟนผู้คุมสอบ"]
-        proctorPC["💻 คอมพิวเตอร์ห้องควบคุม"]
-        
-        dash -.->|เปิดดูผ่าน Wi-Fi ในห้องสอบ| proctorPhone
-        dash -.->|เปิดดูผ่าน Wi-Fi ในห้องสอบ| proctorPC
+        ProctorClient["Proctor Terminal Devices<br/>(Mobile / Tablet / PC Browser)"]
+        UI -.->|HTTP / MJPEG Video Feeds| ProctorClient
     end
 ```
 
 ---
 
-## 2. Sequence Diagram (ขั้นตอนการทำงานเมื่อ AI ตรวจพบการโกง)
-แสดงลำดับการส่งข้อมูลแบบเรียลไทม์ ตั้งแต่นักศึกษามีพฤติกรรมต้องสงสัย จนถึงอาจารย์เปิดดูคลิปหลักฐาน
+## 2. Sequence Diagram: AI Incident Detection & Proctor Alerting Flow
 
 ```mermaid
 sequenceDiagram
     autonumber
-    actor Student as นักศึกษาในห้องสอบ
-    participant Cam as กล้อง CCTV RTSP
-    participant AI as โมเดล AI (YOLOv8)
-    participant Server as Backend & DB (Raspberry Pi)
-    participant UI as เว็บแดชบอร์ด
-    actor Proctor as อาจารย์ผู้คุมสอบ
+    actor Examinee as Examinee (Student)
+    participant CCTV as CCTV IP Camera
+    participant OpenCV as OpenCV Pipeline
+    participant YOLO as YOLOv8 Inference Engine
+    participant Behavior as Behavior Verification Logic
+    participant Backend as Flask API & SQLite DB
+    participant UI as Proctor Web Dashboard
+    actor Proctor as Exam Proctor (Teacher)
 
-    Student->>Cam: แสดงพฤติกรรม (เช่น หยิบมือถือ / หันมองเพื่อน)
-    Cam->>AI: ส่งเฟรมภาพวิดีโอต่อเนื่อง (Real-time Stream)
-    AI->>AI: ตรวจจับวัตถุและวิเคราะห์ตำแหน่ง (Bounding Box)
-    AI->>AI: ตรวจสอบเงื่อนไขพฤติกรรมและระยะเวลา (> 2.5 วินาที)
-    Note over AI: ยืนยันพฤติกรรมทุจริต (Cheating Confirmed)
-    
-    par การบันทึกหลักฐาน
-        AI->>Server: สั่งแคปเจอร์ภาพนิ่งและตัดคลิปวิดีโอ 10 วินาที
-        Server->>Server: บันทึกลง SQLite DB (เวลา, เลขที่นั่ง, ประเภทพฤติกรรม)
-    and การแจ้งเตือนทันที
-        Server->>UI: ส่งข้อมูลแจ้งเตือน (Real-time Alert Event)
-        UI->>UI: ขึ้นกรอบสีแดงรอบกล้อง + กะพริบแจ้งเตือนที่โต๊ะสอบ
+    Examinee->>CCTV: Suspicious Action (e.g. Using Phone / Looking Away)
+    CCTV->>OpenCV: RTSP Stream (H.264 Video Frames)
+    OpenCV->>YOLO: Frame Preprocessing (Resize 640x640, BGR to RGB)
+    YOLO->>Behavior: Detect Objects & Bounding Boxes (Conf >= 0.18)
+    Behavior->>Behavior: Verify Sustained Duration (Duration >= 2.5s)
+    Note over Behavior: Violation Confirmed: Cheating Alert Triggered
+
+    par Asynchronous Evidence Archiving
+        Behavior->>Backend: Write Incident Metadata to SQLite Database
+        Behavior->>Backend: Encode & Save 10-Second MP4 Video Clip
+    and Real-Time Alert Broadcast
+        Backend->>UI: Emit Live Alert Event (Camera ID, Violation Type)
+        UI->>UI: Flash Red Camera Boundary & Play Audio Alert
     end
 
-    UI->>Proctor: แจ้งเตือนบนหน้าจอแดชบอร์ดทันที
-    Proctor->>UI: กดคลิกที่รายการเพื่อดูหลักฐาน (Evidence Modal)
-    UI->>Proctor: เล่นวิดีโอหลักฐานพร้อมระบุชื่อและที่นั่งสอบชัดเจน
+    UI->>Proctor: Display Live Alarm & Incident Badge on Dashboard
+    Proctor->>UI: Click Incident in History Table
+    UI->>Proctor: Open Evidence Player Modal (Playback Video & Timestamp)
 ```
 
 ---
 
-## 3. Deployment & Plug-and-Play Diagram (ผังการเชื่อมต่อติดตั้งจริง)
-แสดงการเชื่อมต่อแบบ Standalone Box โดยมี Raspberry Pi เป็นศูนย์กลาง เสียบไฟแล้วใช้งานได้ทันที
+## 3. Hardware & Network Deployment Diagram (Edge AI Plug-and-Play)
 
 ```mermaid
 flowchart LR
-    subgraph PowerStation["⚡ ระบบจ่ายไฟ"]
-        Adapter["อะแดปเตอร์ / Power Bank (5V 3A)"]
+    subgraph PowerStation["Power Supply Unit"]
+        PSU["5V / 3A USB-C Power Adapter"]
     end
 
-    subgraph EdgeDevice["🎛️ กล่องประมวลผลอัจฉริยะ (Edge AI Box)"]
-        Pi["บอร์ด Raspberry Pi 4/5"]
-        AutoBoot["ระบบเปิดเครื่องอัตโนมัติ (Auto-Boot Systemd)"]
-        mDNS["ชื่อโดเมนเครื่อง: http://raspberrypi.local:5000"]
-        Pi --- AutoBoot
-        Pi --- mDNS
+    subgraph EdgeNode["Edge AI Processing Node"]
+        RPI["Raspberry Pi 4 / 5<br/>(Quad-Core ARM Cortex)"]
+        OS["Raspberry Pi OS (64-bit Debian)"]
+        AutoService["systemd Daemon<br/>(Auto-boot on Power On)"]
+        mDNS["Avahi Zeroconf<br/>(raspberrypi.local:5000)"]
+        
+        RPI --- OS
+        OS --- AutoService
+        OS --- mDNS
     end
 
-    subgraph Cameras["📹 กล้องในห้องสอบ"]
-        CCTV["กล้องวงจรปิด CCTV IP Camera (RTSP)"]
+    subgraph VideoSource["Exam Hall Video Acquisition"]
+        CAM["CCTV IP Camera / USB Cam<br/>(RTSP Protocol H.264)"]
     end
 
-    subgraph LocalNetwork["📶 เครือข่ายภายใน"]
-        Router["Wi-Fi Router ห้องสอบ / Hotspot มือถือ"]
+    subgraph LocalLAN["Local Area Network (LAN)"]
+        Router["Wi-Fi Access Point / Router<br/>(Zero External Internet Required)"]
     end
 
-    subgraph UserDevices["👥 อุปกรณ์สำหรับอาจารย์ผู้คุมสอบ"]
-        Mobile["📱 สมาร์ทโฟน (iOS / Android)"]
-        Laptop["💻 คอมพิวเตอร์โน้ตบุ๊ก"]
-        Tablet["📟 ไอแพด / แท็บเล็ต"]
+    subgraph ClientDevices["Proctor Monitoring Terminals"]
+        Mobile["Smartphones (iOS / Android)"]
+        PC["Laptop / Command PC"]
+        Tablet["iPad / Tablets"]
     end
 
-    Adapter -->|สาย USB-C| Pi
-    CCTV -->|เชื่อมต่อสัญญาณภาพ| Router
-    Pi <-->|เชื่อมต่อเครือข่าย| Router
-    Router <-->|พิมพ์ http://raspberrypi.local:5000| Mobile
-    Router <-->|พิมพ์ http://raspberrypi.local:5000| Laptop
-    Router <-->|พิมพ์ http://raspberrypi.local:5000| Tablet
+    PSU -->|DC 5V / 3A| RPI
+    CAM -->|RTSP Stream| Router
+    RPI <-->|Gigabit Ethernet / Wi-Fi| Router
+    Router <-->|http://raspberrypi.local:5000| Mobile
+    Router <-->|http://raspberrypi.local:5000| PC
+    Router <-->|http://raspberrypi.local:5000| Tablet
 ```
-
----
-
-### 💡 คำแนะนำสำหรับการนำไปใช้พรีเซนต์:
-1. **ภาพที่ 1 (System Architecture):** เหมาะสำหรับสไลด์ที่อธิบาย **ภาพรวมโครงสร้างระบบ (System Overview / Methodology)** แสดงความครอบคลุมทั้งฮาร์ดแวร์และซอฟต์แวร์
-2. **ภาพที่ 2 (Sequence Diagram):** เหมาะสำหรับอธิบาย **ขั้นตอนการทำงานของ AI (AI Processing & Verification Flow)** แสดงให้เห็นว่าระบบบันทึกหลักฐานได้อย่างแม่นยำอย่างไร
-3. **ภาพที่ 3 (Deployment Diagram):** เหมาะสำหรับสไลด์ **การนำไปใช้งานจริง (Implementation & Demo)** เพื่อเน้นย้ำจุดเด่นที่เป็นระบบ Plug & Play เสียบปลั๊กปุ๊บ ใช้งานได้ทันที
