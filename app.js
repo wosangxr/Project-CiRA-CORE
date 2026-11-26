@@ -464,27 +464,11 @@ function isPhone(label) {
 
 function isSuspicious(label) {
 
-
-
-
-
-
-
   if (!label) return false;
 
+  if (/^normal\b/i.test(label.trim())) return false;
 
-
-
-
-
-
-  return /phone|cell|mobile|cheat|turning|head|note|paper|earbud|audio|unauthorized|suspicious|gaze/i.test(label);
-
-
-
-
-
-
+  return /phone|cell|mobile|cheat|turning|head|note|paper|earbud|audio|unauthorized|suspicious|gaze|strange|abnormal/i.test(label);
 
 }
 
@@ -12628,209 +12612,58 @@ const Polling = {
 
 
 
-    // Update chart data bucket
-
-
-
-
-
-
-
-    this._updateChartBucket(items.length);
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    // Check for phone detections
-
-
-
-
-
-
-
-    const phoneItems = items.filter(it => isPhone(it.label));
-
-
-
-
-
-
-
+    const suspiciousItems = items.filter(it => (typeof it.is_suspicious === 'boolean' ? it.is_suspicious : isSuspicious(it.label)));
+    const phoneItems = suspiciousItems.filter(it => isPhone(it.label));
     const hasPhone = phoneItems.length > 0;
+    const hasSuspicious = suspiciousItems.length > 0;
 
+    // Update chart data bucket (suspicious events only; ignore normal class)
+    this._updateChartBucket(suspiciousItems.length);
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-    // Add to history if new detection
-
-
-
-
-
-
-
-    if (ts > AppState.lastDetectionTs && items.length > 0) {
+    // Sync SQLite history when new suspicious detection arrives
+    const isNewTs = ts > AppState.lastDetectionTs && suspiciousItems.length > 0;
+    if (isNewTs) {
       AppState.lastDetectionTs = ts;
       HistoryPage.loadHistory();
     }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    // Phone alert
-
-
-
-
-
-
-
-    if (hasPhone) {
-
-
-
-
-
-
-
-      Notifications.playAlert();
-
-
-
-
-
-
-
-      if (AppState.settings.toastEnabled !== false) {
-
-
-
-
-
-
-
-        const phone = phoneItems[0];
-
-
-
-
-
-
-
-        Notifications.showToast(
-
-
-
-
-
-
-
-          '⚠️ PHONE DETECTED',
-
-
-
-
-
-
-
-          `Camera 1 · ${phone.name || phone.label} · ${Math.round(phone.confidence * 100)}% confidence`,
-
-
-
-
-
-
-
-          'danger'
-
-
-
-
-
-
-
-        );
-
+    // Alert for phone or strange behavior
+    if (hasSuspicious) {
+      const nowMs = Date.now();
+      const canNotify = (nowMs - (this._lastAlertAt || 0)) >= 4000;
+      if (canNotify) {
+        this._lastAlertAt = nowMs;
+        Notifications.playAlert();
+        if (AppState.settings.toastEnabled !== false) {
+          const lead = hasPhone ? phoneItems[0] : suspiciousItems[0];
+          const title = hasPhone ? '⚠️ PHONE DETECTED' : '⚠️ SUSPICIOUS BEHAVIOR (STRANGE)';
+          const camLabel = (AppState.cameras[lead.camera_id || 'cam1'] || {}).name || 'Camera 1';
+          Notifications.showToast(
+            title,
+            `${camLabel} · ${lead.name || lead.label} · ${Math.round((lead.confidence || 0) * 100)}% confidence`,
+            'danger'
+          );
+        }
       }
 
-      if (AppState.settings.autoOpenEvidence) {
+      if (AppState.settings.autoOpenEvidence && isNewTs) {
         const modal = $('evidenceModal');
         if (modal && modal.style.display !== 'flex') {
           setTimeout(() => {
             if (AppState.history && AppState.history.length > 0) {
-              HistoryPage.openEvidenceModal(0);
+              const latestAgeSec = (Date.now() / 1000) - (AppState.history[0].ts || 0);
+              if (latestAgeSec < 30) {
+                HistoryPage.openEvidenceModal(0);
+              }
             }
           }, 350);
         }
       }
-
     }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     // Update monitor alerts
-
-
-
-
-
-
-
-    MonitorPage.updateDetectionAlert(hasPhone);
-
-
-
-
-
-
-
-    MonitorPage.updateDetCount(items.length);
+    MonitorPage.updateDetectionAlert(hasSuspicious);
+    MonitorPage.updateDetCount(suspiciousItems.length);
 
 
 

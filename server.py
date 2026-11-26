@@ -31,6 +31,9 @@ import sqlite3
 import datetime
 import collections
 import subprocess
+import tempfile
+import platform
+import base64
 import cv2
 cv2.setNumThreads(1)
 import numpy as np
@@ -48,12 +51,15 @@ def add_cors_headers(response):
 # ─────────────────────────── Constants ────────────────────────────
 SERVER_START_TIME = time.time()
 SERVER_VERSION = "2.0.0"
+AI_ENGINE_MODE = os.environ.get("AI_ENGINE_MODE", "yolo").strip().lower()
+RAW_FEED_MAX_WIDTH = int(os.environ.get("RAW_FEED_MAX_WIDTH", "640"))
+STREAM_MAX_WIDTH = int(os.environ.get("STREAM_MAX_WIDTH", "1280"))
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'detections.db')
 CAM_CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'camera_config.json')
 SNAPSHOTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'snapshots')
 os.makedirs(SNAPSHOTS_DIR, exist_ok=True)
 
-CIRA_TEMP_DIR = r"C:\cira_temp"
+CIRA_TEMP_DIR = r"C:\cira_temp" if platform.system() == "Windows" else os.path.join(tempfile.gettempdir(), "cira_temp")
 CIRA_FRAME_PATH = os.path.join(CIRA_TEMP_DIR, "latest_cira.jpg")
 CIRA_PAYLOAD_PATH = os.path.join(CIRA_TEMP_DIR, "latest_payload.json")
 os.makedirs(CIRA_TEMP_DIR, exist_ok=True)
@@ -328,6 +334,12 @@ TEMPORAL_SETTINGS = {
         "label": "Suspicious Head Turning (>45°)",
         "notes": "Facial landmark and head orientation tracked sustained yaw deviation exceeding normal exam threshold."
     },
+    "strange": {
+        "required_duration": 2.0,
+        "max_gap": 2.5,
+        "label": "Suspicious Behavior Detected (Strange)",
+        "notes": "Custom CiRA CORE model detected sustained strange / abnormal exam behavior."
+    },
     "phone": {
         "required_duration": 1.5,
         "max_gap": 2.5,             # generous gap to prevent frame jitter reset
@@ -350,6 +362,23 @@ TEMPORAL_SETTINGS = {
 
 active_suspicions = {}
 active_suspicions_lock = threading.Lock()
+
+
+def _classify_behavior(raw_label, cls_id=-1):
+    """Map raw label / class ID from CiRA CORE or YOLO to (behavior_type, is_suspicious)."""
+    raw_l = str(raw_label or "").strip().lower()
+    if raw_l == "normal" or raw_l.startswith("normal ") or raw_l == "person" or "student" in raw_l or cls_id == 0:
+        return "normal", False
+    if cls_id in (65, 67) or any(k in raw_l for k in ("phone", "mobile", "cell", "remote", "smartphone")):
+        return "phone", True
+    if any(k in raw_l for k in ("turn", "look", "head", "yaw")):
+        return "head_turn", True
+    if any(k in raw_l for k in ("strange", "abnormal", "suspicious")):
+        return "strange", True
+    if cls_id == 73 or any(k in raw_l for k in ("sheet", "note", "paper", "cheat", "passing", "book")):
+        return "cheat_sheet", True
+    return "default", True
+
 
 def resolve_seat_info(bbox, camera_id="cam1", img_w=640, img_h=480):
     if not bbox or len(bbox) < 4:
@@ -374,7 +403,7 @@ def _find_highlight_evidence(behavior_type):
     snaps = os.listdir(SNAPSHOTS_DIR) if os.path.exists(SNAPSHOTS_DIR) else []
     video_path = ""
     snap_path = ""
-    target = "turning_head" if behavior_type == "head_turn" else "cheating_detected"
+    target = "turning_head" if behavior_type in ("head_turn", "strange") else "cheating_detected"
     for f in snaps:
         if target in f:
             if f.endswith(".mp4") and not video_path:
@@ -424,24 +453,44 @@ def _save_rolling_buffer_clip(out_path, b_type="phone", fps=15):
     t.join(timeout=2.0)
     return os.path.exists(out_path)
 
+def _get_fallback_frame(camera_id):
+    """Retrieve latest frame from camera worker, UDP buffer, or CIRA disk fallback."""
+    if camera_id in cameras:
+        with cameras[camera_id]["lock"]:
+            f = cameras[camera_id].get("latest_frame")
+        if f is not None:
+            return f
+    if camera_id == "cam1":
+        with udp_state["lock"]:
+            jpg = udp_state.get("jpg_bytes")
+            last_t = udp_state.get("last_received", 0)
+        if jpg is not None and (time.time() - last_t < 4.0):
+            arr = np.frombuffer(jpg, dtype=np.uint8)
+            f = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+            if f is not None:
+                return f
+        if os.path.exists(CIRA_FRAME_PATH) and (time.time() - os.path.getmtime(CIRA_FRAME_PATH) < 4.0):
+            raw = np.fromfile(CIRA_FRAME_PATH, dtype=np.uint8)
+            f = cv2.imdecode(raw, cv2.IMREAD_COLOR)
+            if f is not None:
+                return f
+    return None
+
+
 def process_temporal_detection(camera_id, item, frame=None):
     now = time.time()
     raw_label = (item.get("label") or item.get("name") or "").lower()
     conf = float(item.get("confidence") or item.get("score") or 0.85)
     bbox = item.get("bbox") or [100, 100, 200, 200]
-    
-    if any(k in raw_label for k in ("turn", "look", "head", "yaw")):
-        b_type = "head_turn"
-    elif any(k in raw_label for k in ("phone", "mobile", "cell", "remote", "smartphone")):
-        b_type = "phone"
-    elif any(k in raw_label for k in ("sheet", "note", "paper", "cheat", "passing", "book")):
-        b_type = "cheat_sheet"
-    else:
-        b_type = "default"
-        
+
+    b_type, is_suspicious = _classify_behavior(raw_label, item.get("cls_id", -1))
+    if not is_suspicious or b_type == "normal":
+        return False, None
+
     cfg = TEMPORAL_SETTINGS.get(b_type, TEMPORAL_SETTINGS["default"])
-    
-    seat, student_name = resolve_seat_info(bbox, camera_id)
+
+    img_w, img_h = detection_state.get("img_dim", (640, 480))
+    seat, student_name = resolve_seat_info(bbox, camera_id, img_w=img_w, img_h=img_h)
     if item.get("seat_number"):
         seat = item.get("seat_number")
     if item.get("student_name"):
@@ -485,9 +534,8 @@ def process_temporal_detection(camera_id, item, frame=None):
             video_path = ""
 
             # Save real-time evidence snapshot
-            if frame is None and camera_id in cameras:
-                with cameras[camera_id]["lock"]:
-                    frame = cameras[camera_id].get("latest_frame")
+            if frame is None:
+                frame = _get_fallback_frame(camera_id)
 
             if frame is not None:
                 try:
@@ -542,29 +590,164 @@ def process_temporal_detection(camera_id, item, frame=None):
     return False, None
 
 # ─────────────────────────── CiRA CORE Integration ────────────────
+_last_cira_payload_mtime = 0.0
+_detection_state_lock = threading.Lock()
+
+
+def _extract_bbox_from_obj(obj):
+    """Extract [x, y, w, h] bounding box from CiRA CORE / DeepDetect / generic object dict."""
+    raw_box = obj.get("bbox") if obj.get("bbox") is not None else obj.get("box")
+    if isinstance(raw_box, (list, tuple)) and len(raw_box) >= 4:
+        return [float(raw_box[0]), float(raw_box[1]), float(raw_box[2]), float(raw_box[3])]
+    if isinstance(raw_box, dict):
+        return [
+            float(raw_box.get("x", 0)),
+            float(raw_box.get("y", 0)),
+            float(raw_box.get("w", raw_box.get("width", 100))),
+            float(raw_box.get("h", raw_box.get("height", 100))),
+        ]
+    rect = obj.get("rect")
+    if isinstance(rect, dict):
+        return [
+            float(rect.get("x", 0)),
+            float(rect.get("y", 0)),
+            float(rect.get("w", rect.get("width", 100))),
+            float(rect.get("h", rect.get("height", 100))),
+        ]
+    if "x" in obj and "y" in obj:
+        return [
+            float(obj.get("x", 0)),
+            float(obj.get("y", 0)),
+            float(obj.get("w", obj.get("width", 100))),
+            float(obj.get("h", obj.get("height", 100))),
+        ]
+    return [100, 100, 200, 200]
+
+
+def _normalize_cira_payload(data, default_camera_id="cam1"):
+    """Parse CiRA CORE DeepDetect or generic JSON payload into normalized detection items."""
+    if isinstance(data, list):
+        src = {"objects": data}
+        root = {}
+    elif isinstance(data, dict):
+        root = data
+        dd = data.get("DeepDetect")
+        src = dd if isinstance(dd, dict) else data
+    else:
+        return default_camera_id, [], (RAW_FEED_MAX_WIDTH, 360), False
+
+    camera_id = str(root.get("camera_id") or src.get("camera_id") or default_camera_id).strip() or default_camera_id
+    raw_items = None
+    for key in ("items", "objects", "data", "detections", "results"):
+        if key in src and isinstance(src[key], list):
+            raw_items = src[key]
+            break
+    if raw_items is None and any(k in src for k in ("label", "name", "class")):
+        raw_items = [src]
+    if raw_items is None:
+        raw_items = []
+
+    im_w = src.get("im_w") or src.get("width") or src.get("img_w") or root.get("im_w")
+    im_h = src.get("im_h") or src.get("height") or src.get("img_h") or root.get("im_h")
+    if not (im_w and im_h):
+        cam_f = _get_fallback_frame(camera_id)
+        if cam_f is not None:
+            fh, fw = cam_f.shape[:2]
+            if RAW_FEED_MAX_WIDTH > 0 and fw > RAW_FEED_MAX_WIDTH:
+                im_w = RAW_FEED_MAX_WIDTH
+                im_h = int(RAW_FEED_MAX_WIDTH * (fh / max(1, fw)))
+            else:
+                im_w, im_h = fw, fh
+        else:
+            im_w, im_h = RAW_FEED_MAX_WIDTH, 360
+
+    items = []
+    has_suspicious = False
+    for obj in raw_items:
+        if not isinstance(obj, dict):
+            continue
+        raw_label = str(obj.get("label") or obj.get("name") or obj.get("class") or "Object").strip()
+        conf_val = obj.get("confidence")
+        if conf_val is None:
+            conf_val = obj.get("score")
+        if conf_val is None:
+            conf_val = obj.get("conf", 0.90)
+        conf_f = float(conf_val)
+        conf_norm = conf_f / 100.0 if conf_f > 1.0 else conf_f
+        bbox = _extract_bbox_from_obj(obj)
+        cls_id = int(obj.get("cls_id", -1)) if str(obj.get("cls_id", "")).lstrip("-").isdigit() else -1
+        b_type, is_suspicious = _classify_behavior(raw_label, cls_id=cls_id)
+        if is_suspicious:
+            has_suspicious = True
+
+        display_label = TEMPORAL_SETTINGS[b_type]["label"] if b_type in TEMPORAL_SETTINGS else ("Normal Behavior" if b_type == "normal" else raw_label)
+        items.append({
+            "label": raw_label,
+            "display_label": display_label,
+            "behavior_type": b_type,
+            "is_suspicious": is_suspicious,
+            "name": f"{raw_label} ({int(conf_norm * 100)}%)",
+            "confidence": conf_norm,
+            "bbox": bbox,
+            "camera_id": camera_id,
+            "cls_id": cls_id,
+            "seat_number": obj.get("seat_number", ""),
+            "student_name": obj.get("student_name", ""),
+            "session_id": obj.get("session_id") or root.get("session_id") or "PHYS-101-MID",
+        })
+
+    return camera_id, items, (int(im_w), int(im_h)), has_suspicious
+
+
+def _apply_cira_detections(camera_id, items, img_dim, has_suspicious, frame=None):
+    """Update shared detection_state and feed only suspicious items to temporal scoring/SQLite."""
+    now = time.time()
+    with _detection_state_lock:
+        detection_state["items"] = items
+        detection_state["count"] = len(items)
+        detection_state["timestamp"] = now
+        detection_state["img_dim"] = img_dim
+        detection_state["has_suspicious"] = has_suspicious
+        detection_state["source"] = "cira_core"
+
+    confirmed_ids = []
+    for it in items:
+        if it.get("is_suspicious"):
+            confirmed, row_id = process_temporal_detection(camera_id, it, frame=frame)
+            if confirmed and row_id is not None:
+                confirmed_ids.append(row_id)
+    return confirmed_ids
+
+
 @app.route('/api/cira_detection', methods=['POST'])
 def receive_cira_detection():
-    global detection_state
     try:
         data = request.get_json(force=True)
-        items = data.get("items", [])
-        if not items and "label" in data:
-            items = [data]
-            
-        camera_id = data.get("camera_id", "cam1")
-        detection_state["count"] = len(items)
-        detection_state["items"] = items
-        detection_state["timestamp"] = time.time()
-        
-        confirmed_ids = []
-        for it in items:
-            confirmed, row_id = process_temporal_detection(camera_id, it)
-            if confirmed:
-                confirmed_ids.append(row_id)
-                
+        frame = None
+        if isinstance(data, dict):
+            b64_img = data.get("image_base64") or data.get("frame_base64")
+            if isinstance(b64_img, str) and b64_img:
+                raw_b64 = b64_img.split(",", 1)[-1]
+                arr = np.frombuffer(base64.b64decode(raw_b64), dtype=np.uint8)
+                decoded = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+                if decoded is not None:
+                    frame = decoded
+
+        camera_id, items, img_dim, has_suspicious = _normalize_cira_payload(data)
+        if frame is not None and camera_id in cameras:
+            with cameras[camera_id]["lock"]:
+                cameras[camera_id]["latest_frame"] = frame
+            if camera_id == "cam1":
+                with cam1_buffer_lock:
+                    cam1_rolling_buffer.append(frame.copy())
+
+        confirmed_ids = _apply_cira_detections(camera_id, items, img_dim, has_suspicious, frame=frame)
+
         return jsonify({
             "status": "ok",
+            "camera_id": camera_id,
             "received_items": len(items),
+            "suspicious_items": sum(1 for it in items if it.get("is_suspicious")),
             "confirmed_events": len(confirmed_ids),
             "event_ids": confirmed_ids,
             "timestamp": detection_state["timestamp"]
@@ -572,60 +755,46 @@ def receive_cira_detection():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 400
 
+
 def _auto_save_phone_detections(camera_id):
-    # Process detection_state items through temporal behavior scoring
+    # Process only suspicious items through temporal behavior scoring
     for it in detection_state.get("items", []):
-        process_temporal_detection(camera_id, it)
+        if it.get("is_suspicious", True):
+            process_temporal_detection(camera_id, it)
+
+
+def _clear_stale_detections(max_age=3.0):
+    with _detection_state_lock:
+        if detection_state.get("items") and (time.time() - detection_state.get("timestamp", 0) > max_age):
+            detection_state["items"] = []
+            detection_state["count"] = 0
+            detection_state["has_suspicious"] = False
 
 
 def update_cira_payload_state():
-    """Reads CIRA_PAYLOAD_PATH and syncs to detection_state in real-time."""
-    global detection_state
-    if not os.path.exists(CIRA_PAYLOAD_PATH):
-        return
-    try:
-        mtime = os.path.getmtime(CIRA_PAYLOAD_PATH)
-        if time.time() - mtime < 4.0:
-            with open(CIRA_PAYLOAD_PATH, 'r', encoding='utf-8') as f:
-                cira_raw = json.load(f)
-            items = []
-            if isinstance(cira_raw, dict):
-                src = cira_raw.get("DeepDetect") if "DeepDetect" in cira_raw and isinstance(cira_raw.get("DeepDetect"), dict) else cira_raw
-                raw_items = None
-                for key in ("objects", "items", "data"):
-                    if key in src and isinstance(src[key], list):
-                        raw_items = src[key]
-                        break
-                if raw_items is not None:
-                    for obj in raw_items:
-                        label = obj.get("name") or obj.get("label") or obj.get("class", "Object")
-                        conf = obj.get("confidence") or obj.get("score") or obj.get("conf", 0.90)
-                        if "x" in obj and "y" in obj:
-                            bbox = [obj.get("x", 0), obj.get("y", 0), obj.get("w", 100), obj.get("h", 100)]
-                        else:
-                            bbox = obj.get("bbox") or obj.get("box") or [100, 100, 200, 200]
-                        items.append({
-                            "label": label,
-                            "name": f"{label} ({int(conf * 100 if conf <= 1.0 else conf)}%)",
-                            "confidence": float(conf) if conf <= 1.0 else float(conf) / 100.0,
-                            "bbox": bbox
-                        })
-                detection_state["items"] = items
-                detection_state["count"] = len(items)
-                detection_state["timestamp"] = time.time()
-                detection_state["img_dim"] = (src.get("im_w", 1280), src.get("im_h", 720))
-                _auto_save_phone_detections("cam1")
-        else:
-            if time.time() - detection_state.get("timestamp", 0) > 4.0:
-                detection_state["items"] = []
-                detection_state["count"] = 0
-    except Exception:
-        pass
+    """Reads CIRA_PAYLOAD_PATH when updated and syncs to detection_state in real-time."""
+    global _last_cira_payload_mtime
+    if os.path.exists(CIRA_PAYLOAD_PATH):
+        try:
+            mtime = os.path.getmtime(CIRA_PAYLOAD_PATH)
+            if time.time() - mtime < 4.0:
+                if mtime != _last_cira_payload_mtime:
+                    with open(CIRA_PAYLOAD_PATH, 'r', encoding='utf-8') as f:
+                        cira_raw = json.load(f)
+                    _last_cira_payload_mtime = mtime
+                    camera_id, items, img_dim, has_suspicious = _normalize_cira_payload(cira_raw)
+                    _apply_cira_detections(camera_id, items, img_dim, has_suspicious)
+                return
+        except Exception:
+            pass
+    _clear_stale_detections(max_age=3.0)
+
 
 @app.route('/api/detections', methods=['GET'])
 def get_detections():
     update_cira_payload_state()
-    return jsonify(detection_state)
+    with _detection_state_lock:
+        return jsonify(dict(detection_state))
 
 # ─────────────────────────── History API ──────────────────────────
 @app.route('/api/history', methods=['GET'])
@@ -751,6 +920,9 @@ def system_status():
         },
         "uptime": int(time.time() - SERVER_START_TIME),
         "version": SERVER_VERSION,
+        "ai_engine_mode": AI_ENGINE_MODE,
+        "raw_feed_url": "/raw_feed?cam=cam1",
+        "cira_detection_endpoint": "/api/cira_detection",
         "timestamp": time.time()
     })
 
@@ -849,18 +1021,19 @@ def _draw_detection_boxes(frame, cam_id="cam1"):
     is_black_feed = bool(frame.mean() < 2.0)
 
     # 1. Top HUD Status Bar with Real-time FPS (Clean video, no seat coordinate boxes)
-    has_suspicious = detection_state.get("has_suspicious", False)
+    is_fresh_det = (time.time() - detection_state.get("timestamp", 0)) <= 3.0
+    has_suspicious = is_fresh_det and detection_state.get("has_suspicious", False)
     cam_fps_val = stream_fps.get(cam_id, 29.5)
     hud_bg = (18, 15, 55) if has_suspicious else (20, 22, 28)
     cv2.rectangle(frame, (0, 0), (fw, 32), hud_bg, -1)
 
     if has_suspicious:
         cv2.circle(frame, (16, 16), 6, (0, 0, 255), -1)
-        cv2.putText(frame, f"AI EXAM INTEGRITY  |  WARNING: SUSPICIOUS PHONE  |  {cam_fps_val:.1f} FPS", 
+        cv2.putText(frame, f"AI EXAM INTEGRITY  |  WARNING: SUSPICIOUS BEHAVIOR  |  {cam_fps_val:.1f} FPS", 
                     (32, 21), cv2.FONT_HERSHEY_SIMPLEX, 0.44, (0, 180, 255), 1)
     else:
         cv2.circle(frame, (16, 16), 5, (0, 255, 120), -1)
-        cv2.putText(frame, f"● LIVE  |  {cam_fps_val:.1f} FPS  |  AI INTEGRITY ACTIVE", 
+        cv2.putText(frame, f"● LIVE  |  {cam_fps_val:.1f} FPS  |  CiRA CORE ACTIVE", 
                     (32, 21), cv2.FONT_HERSHEY_SIMPLEX, 0.44, (230, 230, 230), 1)
 
     # 2.5 Show prompt if camera shutter is closed (black feed)
@@ -892,25 +1065,33 @@ def _draw_detection_boxes(frame, cam_id="cam1"):
         cls_id = it.get("cls_id", -1)
         conf = float(it.get("confidence", 0.85))
 
-        is_phone = cls_id in (67, 65) or any(k in label.lower() for k in ("phone", "cell", "mobile", "remote"))
-        is_book = cls_id == 73 or any(k in label.lower() for k in ("book", "note", "paper", "cheat"))
-        is_student = cls_id == 0 or "student" in label.lower()
+        b_type, is_suspicious = _classify_behavior(label, cls_id=cls_id)
 
-        if is_phone:
+        if b_type == "phone":
             color = (0, 0, 255)  # Crimson Red
             thick = 3
             corner_thick = 5
-            tag = f" Unauthorized Smartphone ({int(conf * 100)}%) "
-        elif is_book:
+            tag = f" Phone ({int(conf * 100)}%) "
+        elif b_type in ("strange", "head_turn"):
+            color = (0, 100, 255)  # Orange-Red
+            thick = 3
+            corner_thick = 5
+            tag = f" Strange Behavior ({int(conf * 100)}%) "
+        elif b_type == "cheat_sheet":
             color = (0, 140, 255) # Orange
             thick = 3
             corner_thick = 5
-            tag = f" Prohibited Notes / Book ({int(conf * 100)}%) "
-        else: # Student
+            tag = f" Prohibited Notes ({int(conf * 100)}%) "
+        elif b_type == "normal":
             color = (0, 230, 100) # Bright Green
             thick = 2
             corner_thick = 4
-            tag = f" {it.get('name', 'Student')} "
+            tag = f" Normal ({int(conf * 100)}%) "
+        else:
+            color = (0, 230, 100)
+            thick = 2
+            corner_thick = 4
+            tag = f" {it.get('name', label)} "
 
         # Bounding box
         cv2.rectangle(frame, (bx, by), (bx + bw, by + bh), color, thick)
@@ -991,11 +1172,7 @@ def stream_generator_for_cam(cam_id):
             with cam["lock"]:
                 live_frame = cam["latest_frame"]
             if live_frame is not None:
-                fh, fw = live_frame.shape[:2]
-                if fw > 1280:
-                    f = cv2.resize(live_frame, (1280, int(1280 * (fh / fw))))
-                else:
-                    f = live_frame.copy()
+                f = _resize_to_max_width(live_frame, STREAM_MAX_WIDTH, copy_if_unmodified=True)
                 _draw_detection_boxes(f, cam_id=cam_id)
                 frame_bytes = _encode_frame(f, quality=70)
         # Priority 3: Disk fallback
@@ -1018,6 +1195,46 @@ def stream_generator_for_cam(cam_id):
                b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
         time.sleep(0.033)  # ~30 FPS
 
+def _resize_to_max_width(frame, max_width, copy_if_unmodified=False):
+    """Resize frame keeping aspect ratio if width exceeds max_width."""
+    fh, fw = frame.shape[:2]
+    if max_width > 0 and fw > max_width:
+        return cv2.resize(frame, (max_width, max(1, int(max_width * (fh / max(1, fw))))))
+    return frame.copy() if copy_if_unmodified else frame
+
+
+def _parse_width_arg(default_width):
+    """Parse optional ?w= query parameter clamped to safe bounds."""
+    raw_w = request.args.get('w', '').strip()
+    if raw_w.isdigit():
+        return max(160, min(1920, int(raw_w)))
+    return default_width
+
+
+def _get_raw_jpeg_for_cam(cam_id, max_width=None, quality=75):
+    """Return clean raw JPEG bytes (no HUD/bounding boxes) for CiRA CORE ingestion."""
+    target_w = RAW_FEED_MAX_WIDTH if max_width is None else max_width
+    cam = cameras.get(cam_id)
+    if cam:
+        with cam["lock"]:
+            live_frame = cam.get("latest_frame")
+        if live_frame is not None:
+            f = _resize_to_max_width(live_frame, target_w)
+            encoded = _encode_frame(f, quality=quality)
+            if encoded is not None:
+                return encoded
+    return generate_camera_standby_frame(cam_id)
+
+
+def raw_stream_generator_for_cam(cam_id, max_width=None):
+    """MJPEG raw video feed without overlays so CiRA CORE can run inference cleanly."""
+    while True:
+        frame_bytes = _get_raw_jpeg_for_cam(cam_id, max_width=max_width)
+        yield (b'--frame\r\n'
+               b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+        time.sleep(0.033)
+
+
 @app.route('/video_feed')
 def video_feed_default():
     cam_id = request.args.get('cam', 'cam1')
@@ -1028,6 +1245,27 @@ def video_feed_default():
 def video_feed_by_id(cam_id):
     return Response(stream_generator_for_cam(cam_id),
                     mimetype='multipart/x-mixed-replace; boundary=frame')
+
+@app.route('/raw_feed')
+def raw_feed_default():
+    cam_id = request.args.get('cam', 'cam1')
+    max_w = _parse_width_arg(RAW_FEED_MAX_WIDTH)
+    return Response(raw_stream_generator_for_cam(cam_id, max_width=max_w),
+                    mimetype='multipart/x-mixed-replace; boundary=frame')
+
+@app.route('/raw_feed/<cam_id>')
+def raw_feed_by_id(cam_id):
+    max_w = _parse_width_arg(RAW_FEED_MAX_WIDTH)
+    return Response(raw_stream_generator_for_cam(cam_id, max_width=max_w),
+                    mimetype='multipart/x-mixed-replace; boundary=frame')
+
+@app.route('/api/raw_frame/<cam_id>.jpg', methods=['GET'])
+def raw_frame_snapshot(cam_id):
+    max_w = _parse_width_arg(RAW_FEED_MAX_WIDTH)
+    frame_bytes = _get_raw_jpeg_for_cam(cam_id, max_width=max_w)
+    resp = Response(frame_bytes, mimetype='image/jpeg')
+    resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    return resp
 
 # ─────────────────────────── Built-in Real-Time YOLO Detector ───────────────────────────
 yolo_detector_running = True
@@ -1146,8 +1384,11 @@ def init_realtime_yolo():
     yolo_detector_thread = threading.Thread(target=ai_loop, daemon=True)
     yolo_detector_thread.start()
 
-# Start Real-time YOLO AI Engine
-init_realtime_yolo()
+# Start AI Engine only when explicitly requested; default is external CiRA CORE mode
+if AI_ENGINE_MODE == "yolo":
+    init_realtime_yolo()
+else:
+    print(f"[AI ENGINE] Built-in YOLOv8n disabled (AI_ENGINE_MODE={AI_ENGINE_MODE}). Waiting for CiRA CORE on /api/cira_detection ...")
 
 # ─────────────────────────── RTSP Camera Thread Manager ───────────
 def start_camera_worker(cam_id, url):
@@ -1157,24 +1398,28 @@ def start_camera_worker(cam_id, url):
     cam["url"] = url
     cam["running"] = True
 
+    def _open_capture(target_url):
+        if str(target_url).strip().isdigit():
+            backend = cv2.CAP_DSHOW if platform.system() == 'Windows' else cv2.CAP_V4L2
+            cap = cv2.VideoCapture(int(target_url), backend)
+            cap.set(cv2.CAP_PROP_FRAME_WIDTH, STREAM_MAX_WIDTH)
+            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+            return cap, target_url
+        cap = cv2.VideoCapture(target_url, cv2.CAP_FFMPEG)
+        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        return cap, target_url
+
     def loop():
         target_url = url
         print(f"[{cam_id.upper()}] Connecting: {target_url} ...")
-        if str(target_url).strip().isdigit():
-            source = int(target_url)
-            cap = cv2.VideoCapture(source, cv2.CAP_DSHOW)
-        else:
-            source = target_url
-            cap = cv2.VideoCapture(source, cv2.CAP_FFMPEG)
-            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        cap, source = _open_capture(target_url)
         if not cap.isOpened() and isinstance(source, str) and '/stream1' in source:
             fallback_url = source.replace('/stream1', '/stream2')
             print(f"[{cam_id.upper()}] stream1 busy, switching to substream: {fallback_url}")
             cap.release()
-            source = fallback_url
             target_url = fallback_url
-            cap = cv2.VideoCapture(source, cv2.CAP_FFMPEG)
-            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+            cap, source = _open_capture(target_url)
         print(f"[{cam_id.upper()}] Camera open: {'OK' if cap.isOpened() else 'FAILED'}")
         fail_count = 0
         while cam["running"]:
@@ -1185,10 +1430,7 @@ def start_camera_worker(cam_id, url):
                     cam["latest_frame"] = frame
                 if cam_id == "cam1":
                     with cam1_buffer_lock:
-                        if frame.shape[1] > 1280:
-                            buf_f = cv2.resize(frame, (1280, int(1280 * (frame.shape[0] / frame.shape[1]))))
-                        else:
-                            buf_f = frame.copy()
+                        buf_f = _resize_to_max_width(frame, STREAM_MAX_WIDTH, copy_if_unmodified=True)
                         cam1_rolling_buffer.append(buf_f)
                 time.sleep(0.01)
             else:
@@ -1199,11 +1441,7 @@ def start_camera_worker(cam_id, url):
                 if fail_count > 6:
                     print(f"[{cam_id.upper()}] Reconnecting: {target_url}")
                     cap.release()
-                    if str(target_url).strip().isdigit():
-                        cap = cv2.VideoCapture(int(target_url), cv2.CAP_DSHOW)
-                    else:
-                        cap = cv2.VideoCapture(source, cv2.CAP_FFMPEG)
-                        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+                    cap, source = _open_capture(target_url)
                     fail_count = 0
         cap.release()
         print(f"[{cam_id.upper()}] Camera disconnected.")
@@ -1354,9 +1592,12 @@ if __name__ == '__main__':
 
     print("===================================================================")
     print(" [*] Smart AI Exam Integrity – Unified System v2.0.0 Started!")
+    print(f" [*] AI Engine Mode:  {AI_ENGINE_MODE}")
     print(" [*] Local URL:       http://localhost:5000")
     print(" [*] Login Page:      http://localhost:5000/admin_login.html")
     print(" [*] Generating Public Online Link in background...")
     print(" [*] Stream Feeds:    /video_feed?cam=cam1  /video_feed?cam=cam2")
+    print(" [*] CiRA Raw Feed:   /raw_feed?cam=cam1  /api/raw_frame/cam1.jpg")
+    print(" [*] CiRA Post API:   POST /api/cira_detection")
     print("===================================================================")
     app.run(host='0.0.0.0', port=5000, debug=False, threaded=True)
