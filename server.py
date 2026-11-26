@@ -1267,35 +1267,56 @@ def raw_frame_snapshot(cam_id):
     resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
     return resp
 
-# ─────────────────────────── Built-in Real-Time YOLO Detector ───────────────────────────
+# ─────────────────────────── Built-in Custom Darknet AI Detector ───────────────────────────
 yolo_detector_running = True
 yolo_detector_thread = None
 
+def _find_custom_darknet_model():
+    candidates = [
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "models", "mo_strange"),
+        "/home/tuna/mo_strange",
+        "/home/tuna/Desktop/models_cira/mo_strange",
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "models", "mm"),
+        "/home/tuna/mm",
+    ]
+    for folder in candidates:
+        cfg = os.path.join(folder, "test.cfg")
+        weights = os.path.join(folder, "train.weights")
+        names = os.path.join(folder, "obj.names")
+        if os.path.exists(cfg) and os.path.exists(weights):
+            return cfg, weights, names
+    return None, None, None
+
 def init_realtime_yolo():
     global yolo_detector_thread
+    cfg_path, weights_path, names_path = _find_custom_darknet_model()
+    if not cfg_path or not weights_path:
+        print("[AI ENGINE] Custom Darknet model (test.cfg / train.weights) not found.")
+        return
+
     try:
-        import os
-        os.environ["OMP_NUM_THREADS"] = "1"
-        os.environ["OPENBLAS_NUM_THREADS"] = "1"
-        os.environ["MKL_NUM_THREADS"] = "1"
-        import torch
-        torch.set_num_threads(1)
-        try:
-            torch.set_num_interop_threads(1)
-        except Exception:
-            pass
-        device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
-        print(f"[AI ENGINE] Loading YOLO model on {device} (Pinned to 1 CPU thread) ...")
-        from ultralytics import YOLO
-        yolo_model = YOLO('yolov8n.pt')
-        print("[AI ENGINE] YOLO model loaded successfully!")
+        classes = []
+        if names_path and os.path.exists(names_path):
+            with open(names_path, "r", encoding="utf-8") as f:
+                classes = [line.strip() for line in f.readlines() if line.strip()]
+        if not classes:
+            classes = ["strange", "phone", "normal"]
+
+        print(f"[AI ENGINE] Loading Custom Darknet Model from {os.path.dirname(weights_path)} ...")
+        print(f"[AI ENGINE] Classes: {classes}")
+        net = cv2.dnn.readNetFromDarknet(cfg_path, weights_path)
+        net.setPreferableBackend(cv2.dnn.DNN_BACKEND_OPENCV)
+        net.setPreferableTarget(cv2.dnn.DNN_TARGET_CPU)
+        layer_names = net.getLayerNames()
+        out_layers = [layer_names[i - 1] for i in net.getUnconnectedOutLayers().flatten()]
+        print("[AI ENGINE] Custom Darknet Model loaded successfully!")
     except Exception as e:
-        print(f"[AI ENGINE] Warning: YOLO could not be loaded: {e}")
+        print(f"[AI ENGINE] Warning: Custom Darknet model could not be loaded: {e}")
         return
 
     def ai_loop():
         global detection_state
-        print("[AI ENGINE] Real-time detection loop started (Classes: Person, Phone, Remote, Book | Conf: 0.18).")
+        print(f"[AI ENGINE] Real-time Custom Darknet loop started (Classes: {classes} | Conf: 0.45).")
         while yolo_detector_running:
             try:
                 cam = cameras.get("cam1")
@@ -1309,48 +1330,61 @@ def init_realtime_yolo():
                     continue
 
                 fh, fw = frame.shape[:2]
-                
-                # Fast inference on CPU/Pi: Downscale frame to 640px width
-                infer_w = 640
-                infer_h = max(320, int(640 * (fh / fw)))
-                infer_frame = cv2.resize(frame, (infer_w, infer_h))
-                
-                results = yolo_model(infer_frame, classes=[0, 65, 67, 73], conf=0.18, verbose=False, imgsz=640)
+                blob = cv2.dnn.blobFromImage(frame, 1 / 255.0, (416, 416), swapRB=True, crop=False)
+                net.setInput(blob)
+                layer_outputs = net.forward(out_layers)
+
+                boxes = []
+                confidences = []
+                class_ids = []
+
+                for output in layer_outputs:
+                    for detection in output:
+                        scores = detection[5:]
+                        cls_id = int(np.argmax(scores))
+                        conf = float(scores[cls_id])
+                        if conf >= 0.45:
+                            cx = int(detection[0] * fw)
+                            cy = int(detection[1] * fh)
+                            bw = int(detection[2] * fw)
+                            bh = int(detection[3] * fh)
+                            bx = int(cx - bw / 2)
+                            by = int(cy - bh / 2)
+                            boxes.append([bx, by, bw, bh])
+                            confidences.append(conf)
+                            class_ids.append(cls_id)
+
+                indices = cv2.dnn.NMSBoxes(boxes, confidences, 0.45, 0.35)
                 items = []
                 suspicious_found = False
-                scale_x = fw / float(infer_w)
-                scale_y = fh / float(infer_h)
-                
-                for r in results:
-                    for b in r.boxes:
-                        cls_id = int(b.cls[0])
-                        conf = float(b.conf[0])
-                        xyxy = b.xyxy[0].tolist()
-                        bx = int(xyxy[0] * scale_x)
-                        by = int(xyxy[1] * scale_y)
-                        bw = int((xyxy[2] - xyxy[0]) * scale_x)
-                        bh = int((xyxy[3] - xyxy[1]) * scale_y)
-                        bbox = [bx, by, bw, bh]
-                        
+
+                if len(indices) > 0:
+                    for idx in indices.flatten():
+                        bx, by, bw, bh = boxes[idx]
+                        conf = confidences[idx]
+                        cls_id = class_ids[idx]
+                        raw_label = classes[cls_id] if cls_id < len(classes) else f"class_{cls_id}"
+                        bbox = [max(0, bx), max(0, by), max(1, bw), max(1, bh)]
+
                         seat, sname = resolve_seat_info(bbox, "cam1", fw, fh)
-                        
-                        if cls_id in (67, 65):  # Phone or handheld device
+                        b_type, is_susp = _classify_behavior(raw_label, cls_id)
+
+                        if b_type == "phone":
                             label_text = "Unauthorized Smartphone Detected"
-                            item_name = f"Smartphone ({int(conf * 100)}%)"
+                            item_name = f"Phone ({int(conf * 100)}%)"
                             suspicious_found = True
-                        elif cls_id == 73:     # Prohibited Book / Cheat sheet
-                            label_text = "Passing Notes / Materials"
-                            item_name = f"Notes/Book ({int(conf * 100)}%)"
+                        elif is_susp or "strange" in raw_label.lower():
+                            label_text = "Suspicious Behavior Detected (Strange)"
+                            item_name = f"Strange ({int(conf * 100)}%)"
                             suspicious_found = True
-                        elif cls_id == 0:      # Person / Candidate
-                            label_text = "Student Active"
-                            item_name = f"Student: {sname} ({seat})"
                         else:
-                            continue
-                            
+                            label_text = "Student Active"
+                            item_name = f"Normal: {sname} ({seat})"
+
                         item = {
                             "label": label_text,
                             "name": item_name,
+                            "raw_label": raw_label,
                             "confidence": conf,
                             "bbox": bbox,
                             "camera_id": "cam1",
@@ -1359,9 +1393,8 @@ def init_realtime_yolo():
                             "student_name": sname
                         }
                         items.append(item)
-                        
-                        # Only feed suspicious violations (phones, cheat sheets) into temporal scorer
-                        if cls_id in (67, 65, 73):
+
+                        if is_susp:
                             process_temporal_detection("cam1", item, frame=frame)
 
                 if items:
@@ -1376,7 +1409,7 @@ def init_realtime_yolo():
                         detection_state["count"] = 0
                         detection_state["has_suspicious"] = False
 
-                time.sleep(0.25) # 4 FPS AI inference - ultra-low power, rock solid
+                time.sleep(0.15)
             except Exception as e:
                 print(f"[AI ENGINE] Inference error: {e}")
                 time.sleep(0.2)
@@ -1384,11 +1417,11 @@ def init_realtime_yolo():
     yolo_detector_thread = threading.Thread(target=ai_loop, daemon=True)
     yolo_detector_thread.start()
 
-# Start AI Engine only when explicitly requested; default is external CiRA CORE mode
-if AI_ENGINE_MODE == "yolo":
+# Start built-in Custom Darknet AI Engine automatically on startup
+if AI_ENGINE_MODE in ("yolo", "custom", "darknet", "auto"):
     init_realtime_yolo()
 else:
-    print(f"[AI ENGINE] Built-in YOLOv8n disabled (AI_ENGINE_MODE={AI_ENGINE_MODE}). Waiting for CiRA CORE on /api/cira_detection ...")
+    print(f"[AI ENGINE] Built-in AI disabled (AI_ENGINE_MODE={AI_ENGINE_MODE}). Waiting for CiRA CORE on /api/cira_detection ...")
 
 # ─────────────────────────── RTSP Camera Thread Manager ───────────
 def start_camera_worker(cam_id, url):
